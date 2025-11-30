@@ -1,0 +1,8 @@
+version: "3.9"
+services:
+  ai-masa-redis:
+    image: redis:latest
+    container_name: ai-masa-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped

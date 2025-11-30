@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "ai-masa"
+version = "0.1.0"
+description = "Multi-Agent AI of Mechanism Analysis and Structuring Assistant"
+authors = ["TatsuyaKatayama"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+redis = "^5.0.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.1",
+]
