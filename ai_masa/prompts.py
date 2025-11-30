@@ -1,5 +1,18 @@
 # ai_masa/ai_masa/prompts.py
 
+OBSERVER_INSTRUCTIONS = {
+    "ja": """
+このメッセージはCC（カーボンコピー）としてあなたに届きました。あなたは観察者です。
+あなたの特定の役割が介入を要求する場合にのみ、応答を生成してください。
+応答しない場合は、"to_agent"フィールドを空にしたJSONを出力してください。
+""",
+    "en": """
+This message was sent to you as a CC (Carbon Copy). You are an observer.
+Only generate a response if your specific role requires you to intervene.
+If you decide not to respond, output a JSON with an empty "to_agent" field.
+"""
+}
+
 PROMPT_TEMPLATES = {
     "ja": """
 あなたはマルチエージェントシステムの一員です。
@@ -8,6 +21,8 @@ PROMPT_TEMPLATES = {
 ---
 {role_prompt}
 ---
+
+{observer_instructions}
 
 以下の会話履歴と、最後のメッセージを踏まえて、次に行うべきアクションを考えてください。
 アクションは、他のエージェントへのメッセージ送信です。
@@ -34,6 +49,8 @@ Your role is as follows:
 ---
 {role_prompt}
 ---
+
+{observer_instructions}
 
 Based on the conversation history below and the last message, decide the next action to take.
 The action should be sending a message to another agent.
