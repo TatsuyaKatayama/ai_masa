@@ -99,5 +99,113 @@ class TestBaseAgentWithSession(unittest.TestCase):
         self.assertEqual(final_response_data['content'], "計算")
         self.assertEqual(mock_broker_instance.publish.call_count, 2)
 
+    # --- Added Tests for Robustness ---
+
+    @patch('subprocess.run')
+    @patch('ai_masa.base_agent.RedisBroker')
+    def test_invalid_json_message_is_handled_gracefully(self, MockRedisBroker, mock_subprocess_run):
+        mock_broker_instance = MockRedisBroker.return_value
+        agent = BaseAgent("TestAgent", "Test Role")
+        
+        invalid_json_string = '{"key": "value", "malformed":}'
+        agent._on_message_received(invalid_json_string)
+        
+        # エラーは内部で処理され、クラッシュしないことを確認
+        mock_subprocess_run.assert_not_called()
+        mock_broker_instance.publish.assert_not_called()
+
+    @patch('subprocess.run')
+    @patch('ai_masa.base_agent.RedisBroker')
+    def test_llm_command_execution_failure_is_handled(self, MockRedisBroker, mock_subprocess_run):
+        mock_broker_instance = MockRedisBroker.return_value
+        agent = BaseAgent("TestAgent", "Test Role", llm_command="gemini -r {session_id}")
+        agent.job_sessions['job-fail'] = 'session-fail'
+        
+        # LLMコマンドが失敗するよう設定
+        mock_subprocess_run.side_effect = subprocess.CalledProcessError(
+            returncode=1, cmd='gemini -r session-fail', stderr='LLM service unavailable'
+        )
+        
+        trigger_message = Message("User", "TestAgent", "こんにちは", job_id="job-fail")
+        agent._on_message_received(trigger_message.to_json())
+        
+        mock_subprocess_run.assert_called_once_with(
+            'gemini -r session-fail',
+            input=unittest.mock.ANY, capture_output=True, text=True, shell=True, check=True
+        )
+        mock_broker_instance.publish.assert_not_called()
+
+    @patch('subprocess.run')
+    @patch('ai_masa.base_agent.RedisBroker')
+    def test_session_create_command_failure_is_handled(self, MockRedisBroker, mock_subprocess_run):
+        mock_broker_instance = MockRedisBroker.return_value
+        agent = BaseAgent("TestAgent", "Test Role", llm_session_create_command="create_session_cmd")
+        
+        # セッション作成コマンドが失敗するよう設定
+        mock_subprocess_run.side_effect = subprocess.CalledProcessError(
+            returncode=1, cmd='create_session_cmd', stderr='Session creation failed'
+        )
+
+        trigger_message = Message("User", "TestAgent", "こんにちは", job_id="job-new-fail")
+        agent._on_message_received(trigger_message.to_json())
+
+        # セッション作成コマンドが呼ばれるが、その後のLLMコマンドは呼ばれない
+        mock_subprocess_run.assert_called_once_with(
+            'create_session_cmd',
+            input=unittest.mock.ANY, capture_output=True, text=True, shell=True, check=True
+        )
+        mock_broker_instance.publish.assert_not_called()
+
+    @patch('subprocess.run')
+    @patch('ai_masa.base_agent.RedisBroker')
+    def test_llm_returns_invalid_json_is_handled(self, MockRedisBroker, mock_subprocess_run):
+        mock_broker_instance = MockRedisBroker.return_value
+        agent = BaseAgent("TestAgent", "Test Role", llm_command="gemini -r {session_id}")
+        agent.job_sessions['job-json-fail'] = 'session-json-fail'
+
+        # LLMが不正なJSONを返すよう設定
+        mock_subprocess_run.return_value = subprocess.CompletedProcess(
+            args='gemini -r session-json-fail', returncode=0, stdout='This is not a JSON response.', stderr=''
+        )
+        
+        trigger_message = Message("User", "TestAgent", "こんにちは", job_id="job-json-fail")
+        agent._on_message_received(trigger_message.to_json())
+        
+        # LLMコマンドは呼ばれるが、応答が不正なためpublishはされない
+        mock_subprocess_run.assert_called_once()
+        mock_broker_instance.publish.assert_not_called()
+
+    @patch('subprocess.run')
+    @patch('ai_masa.base_agent.RedisBroker')
+    def test_irrelevant_message_is_ignored(self, MockRedisBroker, mock_subprocess_run):
+        mock_broker_instance = MockRedisBroker.return_value
+        agent = BaseAgent("TestAgent", "Test Role")
+        
+        # 自分宛ではないメッセージ
+        trigger_message = Message("User", "AnotherAgent", "こんにちは", job_id="job-irrelevant")
+        agent._on_message_received(trigger_message.to_json())
+        
+        # LLMコマンドは一切呼ばれない
+        mock_subprocess_run.assert_not_called()
+        mock_broker_instance.publish.assert_not_called()
+
+    @patch('subprocess.run')
+    @patch('ai_masa.base_agent.RedisBroker')
+    def test_session_creation_skipped_if_command_is_none(self, MockRedisBroker, mock_subprocess_run):
+        mock_broker_instance = MockRedisBroker.return_value
+        # セッション作成コマンドを明示的にNoneに設定
+        agent = BaseAgent("TestAgent", "Test Role", llm_session_create_command=None, llm_command="gemini -r {session_id}")
+        
+        # _create_llm_sessionがNoneを返すようにモック
+        with patch.object(agent, '_create_llm_session', return_value=None) as mock_create_session:
+            trigger_message = Message("User", "TestAgent", "こんにちは", job_id="job-no-session-cmd")
+            agent._on_message_received(trigger_message.to_json())
+
+            # セッション作成が試みられる
+            mock_create_session.assert_called_once()
+            # セッション作成失敗により、LLM呼び出しやpublishは行われない
+            mock_subprocess_run.assert_not_called()
+            mock_broker_instance.publish.assert_not_called()
+
 if __name__ == '__main__':
     unittest.main()
