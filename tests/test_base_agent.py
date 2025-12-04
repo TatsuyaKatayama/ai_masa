@@ -3,14 +3,23 @@ from unittest.mock import patch, MagicMock, call
 import json
 import subprocess
 
-from ai_masa.base_agent import BaseAgent
+from ai_masa.agents.base_agent import BaseAgent
 from ai_masa.models.message import Message
 from ai_masa.prompts import OBSERVER_INSTRUCTIONS
 
 class TestBaseAgentWithSession(unittest.TestCase):
 
+    def setUp(self):
+        # datetime.now()をモックして、プロンプト内のタイムスタンプを固定する
+        self.mock_datetime_patcher = patch('datetime.datetime')
+        mock_dt = self.mock_datetime_patcher.start()
+        mock_dt.now.return_value.isoformat.return_value = "2025-12-04T00:00:00.000000"
+
+    def tearDown(self):
+        self.mock_datetime_patcher.stop()
+
     @patch('subprocess.run')
-    @patch('ai_masa.base_agent.RedisBroker')
+    @patch('ai_masa.agents.base_agent.RedisBroker')
     def test_new_job_creates_session_and_responds(self, MockRedisBroker, mock_subprocess_run):
         mock_broker_instance = MockRedisBroker.return_value
         llm_response_json = json.dumps({"to_agent": "User", "content": "初めまして、TestAgentです。"})
@@ -18,7 +27,7 @@ class TestBaseAgentWithSession(unittest.TestCase):
             subprocess.CompletedProcess(args='create_session_cmd', returncode=0, stdout='session-12345', stderr=''),
             subprocess.CompletedProcess(args='gemini -r session-12345', returncode=0, stdout=llm_response_json, stderr='')
         ]
-        agent = BaseAgent("TestAgent", "あなたはテストエージェントです。", llm_command="gemini -r {session_id}", llm_session_create_command="create_session_cmd")
+        agent = BaseAgent("TestAgent", "あなたはテストエージェントです。", user_lang='Japanese', llm_command="gemini -r {session_id}", llm_session_create_command="create_session_cmd")
         trigger_message = Message(from_agent="User", to_agent="TestAgent", content="こんにちは", job_id="job-abc")
         agent._on_message_received(trigger_message.to_json())
         self.assertEqual(mock_subprocess_run.call_count, 2)
@@ -31,12 +40,12 @@ class TestBaseAgentWithSession(unittest.TestCase):
         self.assertEqual(published_data['content'], "初めまして、TestAgentです。")
 
     @patch('subprocess.run')
-    @patch('ai_masa.base_agent.RedisBroker')
+    @patch('ai_masa.agents.base_agent.RedisBroker')
     def test_existing_job_uses_same_session(self, MockRedisBroker, mock_subprocess_run):
         mock_broker_instance = MockRedisBroker.return_value
         llm_response_json = json.dumps({"to_agent": "User", "content": "はい、同じセッションで応答しています。"})
         mock_subprocess_run.return_value = subprocess.CompletedProcess(args='gemini -r session-existing', returncode=0, stdout=llm_response_json, stderr='')
-        agent = BaseAgent("TestAgent", "あなたはテストエージェントです。", llm_command="gemini -r {session_id}")
+        agent = BaseAgent("TestAgent", "あなたはテストエージェントです。", user_lang='Japanese', llm_command="gemini -r {session_id}")
         agent.job_sessions['job-xyz'] = 'session-existing'
         trigger_message = Message(from_agent="User", to_agent="TestAgent", content="調子はどう？", job_id="job-xyz")
         agent._on_message_received(trigger_message.to_json())
@@ -47,22 +56,22 @@ class TestBaseAgentWithSession(unittest.TestCase):
         self.assertEqual(published_data['content'], "はい、同じセッションで応答しています。")
 
     @patch('subprocess.run')
-    @patch('ai_masa.base_agent.RedisBroker')
+    @patch('ai_masa.agents.base_agent.RedisBroker')
     def test_cc_message_triggers_observer_prompt(self, MockRedisBroker, mock_subprocess_run):
         mock_broker_instance = MockRedisBroker.return_value
         llm_response_json = json.dumps({"to_agent": "", "content": ""})
         mock_subprocess_run.return_value = subprocess.CompletedProcess(args='gemini -r session-cc', returncode=0, stdout=llm_response_json, stderr='')
-        agent = BaseAgent("ObserverAgent", "あなたは会話を監視するエージェントです。", llm_command="gemini -r {session_id}")
+        agent = BaseAgent("ObserverAgent", "あなたは会話を監視するエージェントです。", user_lang='Japanese', llm_command="gemini -r {session_id}")
         agent.job_sessions['job-cc-test'] = 'session-cc'
         trigger_message = Message("AgentA", "AgentB", "進めておいてください。", cc_agents=["ObserverAgent"], job_id="job-cc-test")
         agent._on_message_received(trigger_message.to_json())
         mock_subprocess_run.assert_called_once()
         prompt = mock_subprocess_run.call_args.kwargs['input']
-        self.assertIn(OBSERVER_INSTRUCTIONS['ja'], prompt)
+        self.assertIn(OBSERVER_INSTRUCTIONS['Japanese'], prompt)
         mock_broker_instance.publish.assert_not_called()
 
     @patch('subprocess.run')
-    @patch('ai_masa.base_agent.RedisBroker')
+    @patch('ai_masa.agents.base_agent.RedisBroker')
     def test_multi_agent_conversation_with_cc_context(self, MockRedisBroker, mock_subprocess_run):
         job_id = "job-nabla-chan"
         mock_broker_instance = MockRedisBroker.return_value
@@ -79,8 +88,8 @@ class TestBaseAgentWithSession(unittest.TestCase):
 
         mock_subprocess_run.side_effect = mock_llm_logic
 
-        agent1 = BaseAgent("Agent1", "あなたの名前はナブラ。計算が得意です。", llm_command="gemini -r {session_id}")
-        agent2 = BaseAgent("Agent2", "あなたは優秀なアシスタントです。", llm_command="gemini -r {session_id}")
+        agent1 = BaseAgent("Agent1", "あなたの名前はナブラ。計算が得意です。", user_lang='Japanese', llm_command="gemini -r {session_id}")
+        agent2 = BaseAgent("Agent2", "あなたは優秀なアシスタントです。", user_lang='Japanese', llm_command="gemini -r {session_id}")
         agent1.job_sessions[job_id] = 'session-nabla'
         agent2.job_sessions[job_id] = 'session-nabla'
 
@@ -102,10 +111,10 @@ class TestBaseAgentWithSession(unittest.TestCase):
     # --- Added Tests for Robustness ---
 
     @patch('subprocess.run')
-    @patch('ai_masa.base_agent.RedisBroker')
+    @patch('ai_masa.agents.base_agent.RedisBroker')
     def test_invalid_json_message_is_handled_gracefully(self, MockRedisBroker, mock_subprocess_run):
         mock_broker_instance = MockRedisBroker.return_value
-        agent = BaseAgent("TestAgent", "Test Role")
+        agent = BaseAgent("TestAgent", "Test Role", user_lang='Japanese')
         
         invalid_json_string = '{"key": "value", "malformed":}'
         agent._on_message_received(invalid_json_string)
@@ -115,10 +124,10 @@ class TestBaseAgentWithSession(unittest.TestCase):
         mock_broker_instance.publish.assert_not_called()
 
     @patch('subprocess.run')
-    @patch('ai_masa.base_agent.RedisBroker')
+    @patch('ai_masa.agents.base_agent.RedisBroker')
     def test_llm_command_execution_failure_is_handled(self, MockRedisBroker, mock_subprocess_run):
         mock_broker_instance = MockRedisBroker.return_value
-        agent = BaseAgent("TestAgent", "Test Role", llm_command="gemini -r {session_id}")
+        agent = BaseAgent("TestAgent", "Test Role", user_lang='Japanese', llm_command="gemini -r {session_id}")
         agent.job_sessions['job-fail'] = 'session-fail'
         
         # LLMコマンドが失敗するよう設定
@@ -136,10 +145,10 @@ class TestBaseAgentWithSession(unittest.TestCase):
         mock_broker_instance.publish.assert_not_called()
 
     @patch('subprocess.run')
-    @patch('ai_masa.base_agent.RedisBroker')
+    @patch('ai_masa.agents.base_agent.RedisBroker')
     def test_session_create_command_failure_is_handled(self, MockRedisBroker, mock_subprocess_run):
         mock_broker_instance = MockRedisBroker.return_value
-        agent = BaseAgent("TestAgent", "Test Role", llm_session_create_command="create_session_cmd")
+        agent = BaseAgent("TestAgent", "Test Role", user_lang='Japanese', llm_session_create_command="create_session_cmd")
         
         # セッション作成コマンドが失敗するよう設定
         mock_subprocess_run.side_effect = subprocess.CalledProcessError(
@@ -157,10 +166,10 @@ class TestBaseAgentWithSession(unittest.TestCase):
         mock_broker_instance.publish.assert_not_called()
 
     @patch('subprocess.run')
-    @patch('ai_masa.base_agent.RedisBroker')
+    @patch('ai_masa.agents.base_agent.RedisBroker')
     def test_llm_returns_invalid_json_is_handled(self, MockRedisBroker, mock_subprocess_run):
         mock_broker_instance = MockRedisBroker.return_value
-        agent = BaseAgent("TestAgent", "Test Role", llm_command="gemini -r {session_id}")
+        agent = BaseAgent("TestAgent", "Test Role", user_lang='Japanese', llm_command="gemini -r {session_id}")
         agent.job_sessions['job-json-fail'] = 'session-json-fail'
 
         # LLMが不正なJSONを返すよう設定
@@ -176,10 +185,10 @@ class TestBaseAgentWithSession(unittest.TestCase):
         mock_broker_instance.publish.assert_not_called()
 
     @patch('subprocess.run')
-    @patch('ai_masa.base_agent.RedisBroker')
+    @patch('ai_masa.agents.base_agent.RedisBroker')
     def test_irrelevant_message_is_ignored(self, MockRedisBroker, mock_subprocess_run):
         mock_broker_instance = MockRedisBroker.return_value
-        agent = BaseAgent("TestAgent", "Test Role")
+        agent = BaseAgent("TestAgent", "Test Role", user_lang='Japanese')
         
         # 自分宛ではないメッセージ
         trigger_message = Message("User", "AnotherAgent", "こんにちは", job_id="job-irrelevant")
@@ -190,11 +199,11 @@ class TestBaseAgentWithSession(unittest.TestCase):
         mock_broker_instance.publish.assert_not_called()
 
     @patch('subprocess.run')
-    @patch('ai_masa.base_agent.RedisBroker')
+    @patch('ai_masa.agents.base_agent.RedisBroker')
     def test_session_creation_skipped_if_command_is_none(self, MockRedisBroker, mock_subprocess_run):
         mock_broker_instance = MockRedisBroker.return_value
         # セッション作成コマンドを明示的にNoneに設定
-        agent = BaseAgent("TestAgent", "Test Role", llm_session_create_command=None, llm_command="gemini -r {session_id}")
+        agent = BaseAgent("TestAgent", "Test Role", user_lang='Japanese', llm_session_create_command=None, llm_command="gemini -r {session_id}")
         
         # _create_llm_sessionがNoneを返すようにモック
         with patch.object(agent, '_create_llm_session', return_value=None) as mock_create_session:

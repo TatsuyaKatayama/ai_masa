@@ -1,17 +1,18 @@
 import sys
 import json
 import subprocess
-from .models.message import Message
-from .comms.redis_broker import RedisBroker
-from .prompts import PROMPT_TEMPLATES, OBSERVER_INSTRUCTIONS
+from ..models.message import Message
+from ..comms.redis_broker import RedisBroker
+from ..prompts import PROMPT_TEMPLATES, OBSERVER_INSTRUCTIONS
 
 class BaseAgent:
-    def __init__(self, name, role_prompt, redis_host='localhost', language='ja', 
-                 llm_command="echo '{\"to_agent\": \"dummy\", \"content\": \"dummy response\"}'", 
+    def __init__(self, name, description, user_lang='Japanese', redis_host='localhost',
+                 llm_command="echo '{\"to_agent\": \"dummy\", \"content\": \"dummy response\"}'",
                  llm_session_create_command="echo 'new_session_id'"):
         self.name = name
-        self.role_prompt = role_prompt
-        self.language = language
+        self.description = description
+        self.user_lang = user_lang
+        self.language = 'en' # LLM間の会話は英語に固定
         self.llm_command = llm_command
         self.llm_session_create_command = llm_session_create_command
         
@@ -21,6 +22,20 @@ class BaseAgent:
         
         self.broker = RedisBroker(host=redis_host)
         self.broker.connect()
+        
+        # ロールプロンプトを動的に生成
+        self.role_prompt = self._generate_role_prompt()
+
+    def _generate_role_prompt(self):
+        message_json_format = Message().to_json()
+        return f"""Your name is {self.name}. {self.description}
+All internal conversations with other agents are conducted in English.
+When you send a message to the 'User' agent, please respond in {self.user_lang}.
+Your response must be a JSON object that adheres to the following format. Example:
+```json
+{message_json_format}
+```
+""".strip()
 
     def observe_loop(self):
         print(f"[{self.name}] Listening on Redis...")
@@ -102,14 +117,14 @@ class BaseAgent:
 
     def _build_prompt(self, trigger_msg, job_id, is_observer=False):
         history = "\n".join([f"- {msg.from_agent}: {msg.content}" for msg in self.context.get(job_id, [])])
-        template = PROMPT_TEMPLATES.get(self.language, PROMPT_TEMPLATES['en'])
+        template = PROMPT_TEMPLATES.get(self.user_lang, PROMPT_TEMPLATES['en'])
         
         observer_instructions = ""
         if is_observer:
-            observer_instructions = OBSERVER_INSTRUCTIONS.get(self.language, OBSERVER_INSTRUCTIONS['en'])
+            observer_instructions = OBSERVER_INSTRUCTIONS.get(self.user_lang, OBSERVER_INSTRUCTIONS['en'])
             
         return template.format(
-            name=self.name, role_prompt=self.role_prompt, history=history,
+            name=self.name, role_prompt=self.role_prompt, description=self.description, history=history,
             from_agent=trigger_msg.from_agent, content=trigger_msg.content,
             observer_instructions=observer_instructions
         )
@@ -125,12 +140,28 @@ class BaseAgent:
                 command_to_run,
                 input=prompt, capture_output=True, text=True, shell=True, check=True
             )
+            raw_stdout = process.stdout
+            
+            # Gemini CLIの出力形式に対応する処理
             try:
-                pretty_stdout = json.dumps(json.loads(process.stdout), ensure_ascii=False)
-                print(f"[{self.name}] LLM command stdout: {pretty_stdout[:300]}")
+                # まず、外側のJSONをパース
+                outer_response = json.loads(raw_stdout)
+                if "response" in outer_response:
+                    # 'response'キーの値（Markdownコードブロックの可能性あり）を抽出
+                    content_str = outer_response["response"]
+                    # MarkdownコードブロックからJSON文字列を抽出
+                    if content_str.strip().startswith("```json"):
+                        json_start = content_str.find("{")
+                        json_end = content_str.rfind("}") + 1
+                        if json_start != -1 and json_end != -1:
+                            inner_json_str = content_str[json_start:json_end]
+                            # 内部のJSON文字列をパースして返す
+                            return json.dumps(json.loads(inner_json_str))
+                # 'response'キーがないか、またはJSONとして処理できなかった場合、元のstdoutを返す
+                return raw_stdout
             except json.JSONDecodeError:
-                print(f"[{self.name}] LLM command stdout: {process.stdout[:300]}")
-            return process.stdout
+                # 外側のJSONパースに失敗した場合、そのまま返す (既存の挙動)
+                return raw_stdout
         except subprocess.CalledProcessError as e:
             print(f"[{self.name}] Error executing LLM command: {e}\nStderr: {e.stderr}")
             return None
@@ -148,13 +179,13 @@ class BaseAgent:
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python -m ai_masa.base_agent <Name> <Role> [language] [llm_command] [llm_session_create_command]")
+        print("Usage: python -m ai_masa.agents.base_agent <Name> <Description> [user_lang] [llm_command] [llm_session_create_command]")
         sys.exit(1)
     
     agent = BaseAgent(
         name=sys.argv[1],
-        role_prompt=sys.argv[2],
-        language=sys.argv[3] if len(sys.argv) > 3 else 'ja',
+        description=sys.argv[2],
+        user_lang=sys.argv[3] if len(sys.argv) > 3 else 'Japanese',
         llm_command=sys.argv[4] if len(sys.argv) > 4 else "echo '{\"to_agent\": \"dummy\", \"content\": \"dummy response\"}'",
         llm_session_create_command=sys.argv[5] if len(sys.argv) > 5 else "echo 'new_session_id'"
     )

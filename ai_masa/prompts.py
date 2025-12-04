@@ -1,7 +1,7 @@
 # ai_masa/ai_masa/prompts.py
 
 OBSERVER_INSTRUCTIONS = {
-    "ja": """
+    "Japanese": """
 このメッセージはCC（カーボンコピー）としてあなたに届きました。あなたは観察者です。
 あなたの特定の役割が介入を要求する場合にのみ、応答を生成してください。
 応答しない場合は、"to_agent"フィールドを空にしたJSONを出力してください。
@@ -14,7 +14,7 @@ If you decide not to respond, output a JSON with an empty "to_agent" field.
 }
 
 PROMPT_TEMPLATES = {
-    "ja": """
+    "Japanese": """
 あなたはマルチエージェントシステムの一員です。
 あなたの名前は「{name}」です。
 あなたの役割は以下の通りです。

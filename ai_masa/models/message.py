@@ -3,7 +3,7 @@ import json
 import datetime
 
 class Message:
-    def __init__(self, from_agent, to_agent, content, job_id="default", cc_agents=None, msg_id=None):
+    def __init__(self, from_agent="your_name", to_agent="agent_name or user", content="message", job_id="job_id_value", cc_agents=None, msg_id="message_id_value"):
         self.message_id = msg_id or str(uuid.uuid4())
         self.timestamp = datetime.datetime.now().isoformat()
         self.from_agent = from_agent
