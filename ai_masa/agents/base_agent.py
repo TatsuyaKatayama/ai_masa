@@ -3,7 +3,7 @@ import json
 import subprocess
 from ..models.message import Message
 from ..comms.redis_broker import RedisBroker
-from ..prompts import PROMPT_TEMPLATES, OBSERVER_INSTRUCTIONS
+from ..models.prompts import JSON_FORMAT_EXAMPLE, PROMPT_TEMPLATE, OBSERVER_INSTRUCTION
 
 class BaseAgent:
     def __init__(self, name, description, user_lang='Japanese', redis_host='localhost',
@@ -27,14 +27,13 @@ class BaseAgent:
         self.role_prompt = self._generate_role_prompt()
 
     def _generate_role_prompt(self):
-        message_json_format = Message.get_llm_json_example()
         return f"""Your name is {self.name}. {self.description}
 When you send a message to the 'User' agent, please respond in {self.user_lang}.
 Your response must be a JSON object that adheres to the following format.
 IMPORTANT: The 'to_agent' field must be the 'from_agent' of the message you are replying to.
 Example:
 ```json
-{message_json_format}
+{JSON_FORMAT_EXAMPLE}
 ```
 """.strip()
 
@@ -118,15 +117,17 @@ Example:
 
     def _build_prompt(self, trigger_msg, job_id, is_observer=False):
         history = "\n".join([f"- {msg.from_agent}: {msg.content}" for msg in self.context.get(job_id, [])])
-        template = PROMPT_TEMPLATES.get(self.user_lang, PROMPT_TEMPLATES['en'])
         
         observer_instructions = ""
         if is_observer:
-            observer_instructions = OBSERVER_INSTRUCTIONS.get(self.user_lang, OBSERVER_INSTRUCTIONS['en'])
+            observer_instructions = OBSERVER_INSTRUCTION
             
-        return template.format(
-            name=self.name, role_prompt=self.role_prompt, description=self.description, history=history,
-            from_agent=trigger_msg.from_agent, content=trigger_msg.content,
+        return PROMPT_TEMPLATE.format(
+            name=self.name, 
+            role_prompt=self.role_prompt,
+            history=history,
+            from_agent=trigger_msg.from_agent, 
+            content=trigger_msg.content,
             observer_instructions=observer_instructions
         )
 

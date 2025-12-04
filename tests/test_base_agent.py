@@ -5,7 +5,7 @@ import subprocess
 
 from ai_masa.agents.base_agent import BaseAgent
 from ai_masa.models.message import Message
-from ai_masa.prompts import OBSERVER_INSTRUCTIONS
+from ai_masa.models.prompts import OBSERVER_INSTRUCTION
 
 class TestBaseAgentWithSession(unittest.TestCase):
 
@@ -67,7 +67,7 @@ class TestBaseAgentWithSession(unittest.TestCase):
         agent._on_message_received(trigger_message.to_json())
         mock_subprocess_run.assert_called_once()
         prompt = mock_subprocess_run.call_args.kwargs['input']
-        self.assertIn(OBSERVER_INSTRUCTIONS['Japanese'], prompt)
+        self.assertIn(OBSERVER_INSTRUCTION, prompt)
         mock_broker_instance.publish.assert_not_called()
 
     @patch('subprocess.run')
