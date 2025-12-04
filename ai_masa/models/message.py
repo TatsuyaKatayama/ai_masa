@@ -15,6 +15,19 @@ class Message:
     def to_json(self):
         return json.dumps(self.__dict__, ensure_ascii=False)
 
+    @classmethod
+    def get_llm_json_example(cls):
+        """LLMに提示するためのJSONの例を生成する。LLMが生成不要なキーは除外する。"""
+        example_data = {
+            "from_agent": "your_name",
+            "to_agent": "agent_name or user (should be the from_agent of the triggering message)",
+            "cc_agents": [],
+            "content": "Your response message here.",
+            "job_id": "job_id_value"
+        }
+        # タイムスタンプとメッセージIDは例から除外
+        return json.dumps(example_data, ensure_ascii=False, indent=2)
+
     @staticmethod
     def from_json(json_str):
         data = json.loads(json_str)

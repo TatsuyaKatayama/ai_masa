@@ -27,11 +27,12 @@ class BaseAgent:
         self.role_prompt = self._generate_role_prompt()
 
     def _generate_role_prompt(self):
-        message_json_format = Message().to_json()
+        message_json_format = Message.get_llm_json_example()
         return f"""Your name is {self.name}. {self.description}
-All internal conversations with other agents are conducted in English.
 When you send a message to the 'User' agent, please respond in {self.user_lang}.
-Your response must be a JSON object that adheres to the following format. Example:
+Your response must be a JSON object that adheres to the following format.
+IMPORTANT: The 'to_agent' field must be the 'from_agent' of the message you are replying to.
+Example:
 ```json
 {message_json_format}
 ```
