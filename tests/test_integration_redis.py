@@ -8,7 +8,7 @@ import os
 # パスを通す
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from ai_masa.base_agent import BaseAgent
+from ai_masa.agents.base_agent import BaseAgent
 from ai_masa.models.message import Message
 
 class TestRedisCommunication(unittest.TestCase):

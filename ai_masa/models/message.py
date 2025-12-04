@@ -3,7 +3,7 @@ import json
 import datetime
 
 class Message:
-    def __init__(self, from_agent, to_agent, content, job_id="default", cc_agents=None, msg_id=None):
+    def __init__(self, from_agent="your_name", to_agent="agent_name or user", content="message", job_id="job_id_value", cc_agents=None, msg_id="message_id_value"):
         self.message_id = msg_id or str(uuid.uuid4())
         self.timestamp = datetime.datetime.now().isoformat()
         self.from_agent = from_agent
@@ -14,6 +14,19 @@ class Message:
 
     def to_json(self):
         return json.dumps(self.__dict__, ensure_ascii=False)
+
+    @classmethod
+    def get_llm_json_example(cls):
+        """LLMに提示するためのJSONの例を生成する。LLMが生成不要なキーは除外する。"""
+        example_data = {
+            "from_agent": "your_name",
+            "to_agent": "agent_name or user (should be the from_agent of the triggering message)",
+            "cc_agents": [],
+            "content": "Your response message here.",
+            "job_id": "job_id_value"
+        }
+        # タイムスタンプとメッセージIDは例から除外
+        return json.dumps(example_data, ensure_ascii=False, indent=2)
 
     @staticmethod
     def from_json(json_str):

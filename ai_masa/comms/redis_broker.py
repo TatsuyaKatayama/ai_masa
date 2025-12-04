@@ -38,3 +38,11 @@ class RedisBroker(MessageBroker):
             if message['type'] == 'message':
                 # メッセージ本体(data)をコールバックに渡す
                 callback(message['data'])
+
+    def disconnect(self):
+        if self.pubsub:
+            self.pubsub.unsubscribe()
+            self.pubsub.close()
+        if self.client:
+            self.client.close()
+        print(f"[RedisBroker] Disconnected from {self.host}:{self.port}")
