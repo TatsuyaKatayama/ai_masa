@@ -15,8 +15,13 @@ orchestrate_agents() {
     local project_working_dir="${project_root}/works/${project_name}"
     local template_path="${project_root}/config/templates/orchestration.yml.template"
     local config_path="${project_working_dir}/${project_name}.yml"
+    local venv_path="$(realpath "${project_root}/../.venv/bin/activate")"
 
-    # 2. テンプレートファイルの存在チェック
+    # 2. venvとテンプレートファイルの存在チェック
+    if [ ! -f "$venv_path" ]; then
+        echo "Error: Virtual environment activation script not found at $venv_path"
+        exit 1
+    fi
     if [ ! -f "$template_path" ]; then
         echo "Error: Template file not found at $template_path"
         exit 1
@@ -27,6 +32,7 @@ orchestrate_agents() {
     
     # sedでプレースホルダーを置換
     sed -e "s|__PROJECT_ROOT__|${project_root}|g" \
+        -e "s|__VENV_ACTIVATE_PATH__|${venv_path}|g" \
         -e "s|__PROJECT_NAME__|${project_name}|g" \
         "$template_path" > "$config_path"
     
