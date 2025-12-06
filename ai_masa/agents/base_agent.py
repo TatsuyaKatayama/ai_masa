@@ -1,6 +1,8 @@
 import sys
 import json
 import subprocess
+import threading
+import time
 from ..models.message import Message
 from ..comms.redis_broker import RedisBroker
 from ..models.prompts import JSON_FORMAT_EXAMPLE, PROMPT_TEMPLATE, OBSERVER_INSTRUCTION
@@ -25,6 +27,42 @@ class BaseAgent:
         
         # ロールプロンプトを動的に生成
         self.role_prompt = self._generate_role_prompt()
+
+        # 終了イベントとハートビートの設定
+        self.shutdown_event = threading.Event()
+        self.heartbeat_timer = None
+        self._start_heartbeat()
+
+    def shutdown(self):
+        """エージェントをシャットダウンし、バックグラウンドスレッドを停止する"""
+        print(f"[{self.name}] Shutting down...")
+        self.shutdown_event.set()
+        if self.heartbeat_timer:
+            self.heartbeat_timer.cancel()
+        self.broker.disconnect()
+
+    def _send_heartbeat(self):
+        """ハートビートを送信する"""
+        if self.shutdown_event.is_set():
+            return
+            
+        # 自分自身にブロードキャストCC付きでメッセージを送信
+        self.broadcast(
+            target=self.name, 
+            content="heartbeat", 
+            cc=["_broadcast_"],
+            job_id="_system_"
+        )
+        
+        # 次のハートビートをスケジュール
+        self.heartbeat_timer = threading.Timer(30, self._send_heartbeat)
+        self.heartbeat_timer.start()
+
+    def _start_heartbeat(self):
+        """ハートビートの送信を開始する"""
+        print(f"[{self.name}] Starting heartbeat...")
+        # 最初のハートビートをすぐに送信
+        self._send_heartbeat()
 
     def _generate_role_prompt(self):
         return f"""Your name is {self.name}. {self.description}
