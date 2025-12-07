@@ -10,7 +10,8 @@ from ..models.prompts import JSON_FORMAT_EXAMPLE, PROMPT_TEMPLATE, OBSERVER_INST
 class BaseAgent:
     def __init__(self, name, description, user_lang='Japanese', redis_host='localhost',
                  llm_command="echo '{\"to_agent\": \"dummy\", \"content\": \"dummy response\"}'",
-                 llm_session_create_command="echo 'new_session_id'"):
+                 llm_session_create_command="echo 'new_session_id'",
+                 start_heartbeat=True):
         self.name = name
         self.description = description
         self.user_lang = user_lang
@@ -31,7 +32,8 @@ class BaseAgent:
         # 終了イベントとハートビートの設定
         self.shutdown_event = threading.Event()
         self.heartbeat_timer = None
-        self._start_heartbeat()
+        if start_heartbeat:
+            self._start_heartbeat()
 
     def shutdown(self):
         """エージェントをシャットダウンし、バックグラウンドスレッドを停止する"""
@@ -39,7 +41,6 @@ class BaseAgent:
         self.shutdown_event.set()
         if self.heartbeat_timer:
             self.heartbeat_timer.cancel()
-        self.broker.disconnect()
 
     def _send_heartbeat(self):
         """ハートビートを送信する"""
@@ -77,7 +78,7 @@ Example:
 
     def observe_loop(self):
         print(f"[{self.name}] Listening on Redis...")
-        self.broker.subscribe(self._on_message_received)
+        self.broker.subscribe(self._on_message_received, shutdown_event=self.shutdown_event)
 
     def _on_message_received(self, message_json):
         try:

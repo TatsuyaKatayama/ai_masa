@@ -39,7 +39,7 @@ class TestGeminiCliAgentIntegration(unittest.TestCase):
         self.agent.broker.channel = self.test_channel
 
         # 別スレッドでエージェントのリスナーを起動
-        self.agent_thread = threading.Thread(target=self.agent.observe_loop, daemon=True)
+        self.agent_thread = threading.Thread(target=self.agent.observe_loop)
         self.agent_thread.start()
         
         time.sleep(2) # エージェントスレッドがRedisに接続するのを待つ
@@ -127,8 +127,16 @@ class TestGeminiCliAgentIntegration(unittest.TestCase):
         time.sleep(5) # エージェントが次のメッセージを処理するのを待つ
 
     def tearDown(self):
+        print("\n[Test] Tearing down...")
+        # エージェントのシャットダウンをトリガー
+        self.agent.shutdown()
+
+        # スレッドが終了するのを待つ
+        if self.agent_thread and self.agent_thread.is_alive():
+            self.agent_thread.join()
+
         # クリーンアップ
-        self.pubsub.unsubscribe() # 残っている購読があれば解除
+        self.pubsub.unsubscribe()
         self.pubsub.close()
         self.agent.broker.disconnect()
         print("[Test] Cleaned up resources.")

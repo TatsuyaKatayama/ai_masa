@@ -16,7 +16,8 @@ class UserInputAgent(BaseAgent):
             description="Handles user input from the console.",
             redis_host=redis_host,
             llm_command="",
-            llm_session_create_command=""
+            llm_session_create_command="",
+            start_heartbeat=False
         )
         self.default_target_agent = default_target_agent
         self.shutdown_event = threading.Event()
