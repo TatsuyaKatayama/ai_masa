@@ -26,6 +26,10 @@ class TestRedisCommunication(unittest.TestCase):
         self.chief_received = []
         self.calc_received = []
 
+        # スレッドオブジェクトを保持
+        self.t1 = None
+        self.t2 = None
+
         # コールバックをテスト用に上書きして、受信内容をリストに保存
         def mock_handler_chief(msg_json):
             msg = Message.from_json(msg_json)
@@ -38,27 +42,52 @@ class TestRedisCommunication(unittest.TestCase):
                 self.calc_received.append(msg)
                 # Calculatorは受信したらChiefへ返信するシミュレーション
                 if "計算して" in msg.content:
-                    self.agent_calc.broadcast("Chief", "計算完了: 100mm2")
+                    self.agent_calc.broadcast(
+                        target="Chief",
+                        content="計算完了: 100mm2",
+                        job_id="job-123"
+                    )
 
         # プライベートメソッドをモックに差し替え (subscribe内部で呼ばれる)
         self.agent_chief._on_message_received = mock_handler_chief
         self.agent_calc._on_message_received = mock_handler_calc
+    
+    def tearDown(self):
+        print("\n--- Tearing down test ---")
+        # エージェントのシャットダウンをトリガー
+        self.agent_chief.shutdown()
+        self.agent_calc.shutdown()
+
+        # スレッドが終了するのを待つ
+        if self.t1 and self.t1.is_alive():
+            self.t1.join()
+        if self.t2 and self.t2.is_alive():
+            self.t2.join()
+        
+        # スレッドが停止した後に接続を閉じる
+        self.agent_chief.broker.disconnect()
+        self.agent_calc.broker.disconnect()
+        print("--- Teardown complete ---")
 
     def test_pubsub_communication(self):
         print("\n--- Testing Redis Pub/Sub ---")
 
         # 1. 各エージェントの監視ループを別スレッドで開始
-        t1 = threading.Thread(target=self.agent_chief.observe_loop, daemon=True)
-        t2 = threading.Thread(target=self.agent_calc.observe_loop, daemon=True)
-        t1.start()
-        t2.start()
+        self.t1 = threading.Thread(target=self.agent_chief.observe_loop)
+        self.t2 = threading.Thread(target=self.agent_calc.observe_loop)
+        self.t1.start()
+        self.t2.start()
 
-        # Redisの接続待ち
+        # Redisの接続とサブスクライブ待ち
         time.sleep(1)
 
         # 2. Chief -> Calculator へメッセージ送信
         print("[Test] Chief sends request...")
-        self.agent_chief.broadcast("Calculator", "断面積を計算して")
+        self.agent_chief.broadcast(
+            target="Calculator",
+            content="断面積を計算して",
+            job_id="job-123"
+        )
 
         # 通信の伝播待ち
         time.sleep(1)
