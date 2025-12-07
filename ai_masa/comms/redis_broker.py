@@ -24,7 +24,7 @@ class RedisBroker(MessageBroker):
         if self.client:
             self.client.publish(self.channel, message_json)
 
-    def subscribe(self, callback):
+    def subscribe(self, callback, shutdown_event=None):
         if not self.client:
             raise ConnectionError("Broker not connected")
         
@@ -33,8 +33,22 @@ class RedisBroker(MessageBroker):
         
         print(f"[RedisBroker] Subscribed to channel: {self.channel}")
         
-        # ブロッキングループでメッセージを待機
-        for message in self.pubsub.listen():
-            if message['type'] == 'message':
-                # メッセージ本体(data)をコールバックに渡す
+        while True:
+            if shutdown_event and shutdown_event.is_set():
+                break
+
+            # タイムアウト付きでメッセージを取得
+            message = self.pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if message and message['type'] == 'message':
                 callback(message['data'])
+            
+            # CPUを過剰に消費しないように少し待機
+            time.sleep(0.01)
+
+    def disconnect(self):
+        if self.pubsub:
+            self.pubsub.unsubscribe()
+            self.pubsub.close()
+        if self.client:
+            self.client.close()
+        print(f"[RedisBroker] Disconnected from {self.host}:{self.port}")

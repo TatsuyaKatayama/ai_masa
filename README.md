@@ -1,85 +1,100 @@
-# 🤖 ai-masa - Mechanism Analysis and Structuring Assistant
+# 🤖 ai-masa - 分散マルチエージェント LLM システム
 
 ## 🌟 プロジェクト概要
 
-本プロジェクトは、**Redis Pub/Sub** を通信基盤とし、**異なる物理マシン**で稼働する LLM エージェント（Gemini CLIを想定）が協調して複雑なタスクを遂行する分散型マルチエージェントシステムです。
+`ai-masa` は、複数のLLMエージェントが協調してタスクを遂行する、分散型のマルチエージェントシステムです。通信基盤に **Redis Pub/Sub** を採用しており、各エージェントは独立したプロセスとして動作します。ユーザーからの指示は `UserInputAgent` を通じて入力され、`GeminiCliAgent` が思考と応答を担い、`LoggingAgent` が全ての通信を記録します。
 
-ローカルの **Tmuxinator** をオーケストレーションに利用し、SSH 経由でリモートのエージェントを管理します。
+## ⚙️ システムアーキテクチャ
 
-## ⚙️ システムアーキテクチャ 
+```mermaid
+graph TD
+    subgraph User Interaction
+        UserInput[UserInputAgent]
+    end
 
-| 項目 | 詳細 |
+    subgraph Core System
+        Broker[(Redis Pub/Sub)]
+    end
+
+    subgraph Agents
+        Gemini[GeminiCliAgent]
+        Logger[LoggingAgent]
+    end
+
+    UserInput -- "Publish" --> Broker
+    Broker -- "Subscribe" --> Gemini
+    Broker -- "Subscribe" --> Logger
+    Gemini -- "Publish" --> Broker
+```
+
+| コンポーネント | 役割 |
 | :--- | :--- |
-| **通信プロトコル** | **JSON** 形式のメッセージ |
-| **通信基盤** | **Redis Pub/Sub** (リアルタイム非同期通信) |
-| **オーケストレーション** | **Tmuxinator** (ローカルからの SSH/プロセス管理) |
-| **エージェント基盤** | **BaseAgent** (抽象化された  を利用) |
-| **タスク管理** | SQLite () を使用した Job Pool |
+| **UserInputAgent** | ユーザーからのコンソール入力を受け付け、システムにメッセージを送信する。 |
+| **GeminiCliAgent** | メインとなる思考エージェント。Google Gemini CLIと連携し、応答を生成する。 |
+| **LoggingAgent** | システム内を行き交う全てのメッセージを監視し、コンソールにログとして出力する。 |
+| **Redis Pub/Sub** | 全エージェント間のメッセージングを担う非同期通信基盤。 |
+| **orchestrate.sh** | `tmuxinator` を利用して、上記のエージェント群を一括で起動・管理する。 |
 
-## 📦 セットアップと依存関係
+## 📦 セットアップ
 
-### 1. サーバー要件
+### 1. 前提条件
 
-* **Redis Server**: メッセージブローカーとして必須。ローカルまたはネットワーク上の単一インスタンスが必要です。
-
-    ```bash
-    # Dockerでの起動例
-    docker run --name ai-masa-redis -p 6379:6379 -d redis
-    ```
+- [Python 3.10+](https://www.python.org/)
+- [Docker](https://www.docker.com/) と [Docker Compose](https://docs.docker.com/compose/)
+- [Ruby](https://www.ruby-lang.org/en/) と [Bundler](https://bundler.io/)
+- [tmux](https://github.com/tmux/tmux/wiki)
+- [tmuxinator](https://github.com/tmuxinator/tmuxinator) (`gem install tmuxinator`)
 
 ### 2. 環境構築
 
-```bash
-# 依存関係のインストール (poetryを使用する場合)
-pip install poetry
-poetry install
-
-# または pip で個別インストール
-pip install redis filelock
-```
-
-## 🚀 起動方法 (Tmuxinator Workflow)
-
-エージェントをローカル/リモートで起動するための設定ファイルが必要です。
-
-1.  **設定ファイルの準備**:
-    ルートディレクトリに  を作成し、各エージェントの起動コマンドを定義します。
-
-2.  **リモート起動**:
-    リモートマシンでエージェントを起動する場合、 のペインコマンドを以下のように設定します。
-
-    ```yaml
-    # tmuxinator.yml の設定例
-    windows:
-      - collaboration:
-          panes:
-            # Chief Agentをリモートサーバーで起動
-            - ssh user@remote-chief 'cd /path/to/repo && python3 -m ai-masa.base_agent Chief "Director"'
-            # Calculator Agentをローカルで起動
-            - python3 -m ai-masa.base_agent Calculator "Worker"
-    ```
-
-3.  **セッション開始**:
-
+1.  **リポジトリをクローン**
     ```bash
-    tmuxinator start
+    git clone https://github.com/your-username/ai-masa.git
+    cd ai-masa
     ```
 
-## 🧪 テストの実行
+2.  **Redisサーバーの起動**
+    プロジェクトルートで以下のコマンドを実行し、RedisをDockerコンテナとして起動します。
+    ```bash
+    docker-compose up -d
+    ```
 
-通信統合テストを実行し、Redis Pub/Sub 経由でエージェント間のメッセージが正しく流れるか確認します。
+3.  **Python依存関係のインストール**
+    仮想環境を作成し、必要なライブラリをインストールします。
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt 
+    # (もしrequirements.txtがなければ) pip install -e .
+    ```
+
+## 🚀 実行方法
+
+`orchestrate.sh` スクリプトを実行することで、`tmuxinator` が起動し、設定に基づいた `tmux` セッション内で全てのエージェントが自動的に開始されます。
 
 ```bash
-# Redisが起動していることを確認してから実行
-python3 -m unittest tests.test_integration_redis
+./orchestrate.sh
 ```
 
-## 📂 主要ファイルと役割
+実行後、新しい `tmux` セッションがアタッチされます。各ペインでエージェントのログを確認でき、`UserInputAgent` のペインからメッセージを送信できます。
+
+## 🧪 テスト
+
+ユニットテストおよび統合テストを実行するには、以下のコマンドを使用します。
+
+```bash
+python -m unittest discover tests
+```
+
+## 📂 主要なファイルと役割
 
 | ファイル/ディレクトリ | 役割 |
 | :--- | :--- |
-| `/comms/broker_base.py` | **MessageBroker** の抽象基底クラス (インターフェース) |
-| `/comms/redis_broker.py` | Redis の Pub/Sub 機能を使用した具象実装 |
-| `/base_agent.py` | エージェントの基底ロジック（, ） |
-| `/models/message.py` | JSON 通信のデータモデル |
-| `tests/test_integration_redis.py` | Redis を使用したエージェント間通信の統合テスト |
+| `ai_masa/agents/` | 各エージェント（`UserInputAgent`, `GeminiCliAgent`等）の実装。 |
+| `ai_masa/agents/base_agent.py` | 全エージェントの基底クラス。Redisとの接続やメッセージングの基本機能を提供。 |
+| `ai_masa/comms/redis_broker.py` | Redis Pub/Subとの通信を抽象化するクラス。 |
+| `ai_masa/models/message.py` | エージェント間で交換されるメッセージのデータ構造を定義。 |
+| `orchestrate.sh` | `tmuxinator` を使ってエージェント群を起動するメインスクリプト。 |
+| `config/templates/orchestration.yml.template` | `tmuxinator` の設定テンプレート。`orchestrate.sh` によって動的に設定が生成される。 |
+| `docker-compose.yml` | Redisサーバーを起動するためのDocker Compose設定。 |
+| `tests/` | プロジェクトのユニットテストおよび統合テスト。 |
