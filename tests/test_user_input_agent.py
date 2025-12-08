@@ -44,7 +44,7 @@ class TestUserInputAgent(unittest.TestCase):
         self.assertEqual(self.agent.name, "TestUser")
         self.assertEqual(self.agent.default_target_agent, "TestTarget")
         output = self.mock_stdout.getvalue()
-        self.assertIn("[TestUser] Initialized.", output)
+        self.assertIn("[TestUser] Initialized. I will send messages to 'TestTarget'.", output)
 
     @patch('uuid.uuid4')
     def test_broadcast_user_input(self, mock_uuid):

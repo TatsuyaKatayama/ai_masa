@@ -9,7 +9,7 @@ class UserInputAgent(BaseAgent):
     ユーザーからのコンソール入力を受け付け、他のエージェントにメッセージを送信するエージェント。
     LLMは使用しない。
     """
-    def __init__(self, name="UserInputAgent", redis_host='localhost', default_target_agent="GeminiCliAgent"):
+    def __init__(self, name="UserInputAgent", redis_host='localhost', default_target_agent=None):
         # LLM関連のコマンドは不要なため、親クラスの初期化時にダミー値を渡す
         super().__init__(
             name=name,
@@ -23,7 +23,10 @@ class UserInputAgent(BaseAgent):
         self.shutdown_event = threading.Event()
         self.response_received_event = threading.Event()
         self.response_received_event.set()  # 最初は入力可能にする
-        print(f"[{self.name}] Initialized. I will send messages to '{self.default_target_agent}'.")
+        if self.default_target_agent:
+            print(f"[{self.name}] Initialized. I will send messages to '{self.default_target_agent}'.")
+        else:
+            print(f"[{self.name}] Initialized. No default target agent set.")
 
     def think_and_respond(self, trigger_msg, job_id, is_observer=False):
         # このエージェントはLLMによる思考を行わない
@@ -45,7 +48,7 @@ class UserInputAgent(BaseAgent):
                 self.response_received_event.set()
             elif self.name in msg.cc_agents:
                  # CCの場合は表示するだけ
-                 print(f"\n[{self.name}][{job_id}] 👀 (CC) Saw message from {msg.from_agent} to {msg.to_agent}: {msg.content}")
+                 print(f"\n[{self.name}][{job_id}] 👀 (CC) Saw message from {msg.from_agent} to {msg.to_agent}: {msg.content}: {msg.content}")
 
         except Exception as e:
             print(f"[{self.name}] Error in _on_message_received: {e}")
@@ -94,6 +97,11 @@ class UserInputAgent(BaseAgent):
                     print(f"\nA new job has started. Job ID: {job_id}")
                     continue
 
+                if not self.default_target_agent:
+                    print(f"[{self.name}] Error: No default target agent set. Cannot send message.", file=sys.stderr)
+                    self.response_received_event.set() # Re-enable input
+                    continue
+
                 # メッセージを送信する直前に入力をブロック
                 self.response_received_event.clear()
                 self.broadcast(
@@ -117,12 +125,15 @@ class UserInputAgent(BaseAgent):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(f"Usage: python -m ai_masa.agents.user_input_agent <AgentName> [DefaultTargetAgent]")
-        sys.exit(1)
+    import argparse
+    parser = argparse.ArgumentParser(description="Launch a UserInputAgent.")
+    parser.add_argument("name", type=str, help="The name of the agent.")
+    parser.add_argument("--default_target_agent", type=str, help="The default agent to send messages to.")
+
+    args = parser.parse_args()
 
     agent = UserInputAgent(
-        name=sys.argv[1],
-        default_target_agent=sys.argv[2] if len(sys.argv) > 2 else 'GeminiCliAgent'
+        name=args.name,
+        default_target_agent=args.default_target_agent
     )
     agent.start_interaction()
