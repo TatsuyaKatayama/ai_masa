@@ -7,19 +7,23 @@ class GeminiCliAgent(BaseAgent):
     """
     外部のGemini CLIコマンドをLLMとして利用するエージェント。
     """
-    def __init__(self, name="GeminiCliAgent", redis_host='localhost', user_lang='Japanese'):
+    def __init__(self, name="GeminiCliAgent", redis_host='localhost', user_lang='Japanese', description=None, **kwargs):
         # BaseAgentのinvoke_llmで{session_id}が置換される
         llm_command = "gemini --resume {session_id} --output-format json"
         # _create_llm_sessionをオーバーライドするため、親クラスのsession_create_commandは使わない
         llm_session_create_command = ""
 
+        final_description = description if description is not None else \
+            "You are an intelligent AI assistant equipped with the Gemini CLI. Your task is to understand user messages and generate concise and accurate responses using the Gemini CLI tool."
+
         super().__init__(
             name=name,
-            description="You are an intelligent AI assistant equipped with the Gemini CLI. Your task is to understand user messages and generate concise and accurate responses using the Gemini CLI tool.",
+            description=final_description,
             user_lang=user_lang,
             redis_host=redis_host,
             llm_command=llm_command,
-            llm_session_create_command=llm_session_create_command
+            llm_session_create_command=llm_session_create_command,
+            **kwargs
         )
 
     def _create_llm_session(self, job_id):

@@ -73,7 +73,7 @@ graph TD
 `orchestrate.sh` スクリプトを実行することで、`tmuxinator` が起動し、設定に基づいた `tmux` セッション内で全てのエージェントが自動的に開始されます。
 
 ```bash
-./orchestrate.sh
+AI_MASA_TEAM=analysis_team ./orchestrate.sh
 ```
 
 実行後、新しい `tmux` セッションがアタッチされます。各ペインでエージェントのログを確認でき、`UserInputAgent` のペインからメッセージを送信できます。

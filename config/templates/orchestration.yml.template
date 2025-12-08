@@ -6,17 +6,6 @@ root: __PROJECT_ROOT__
 
 windows:
   - agents:
-      layout: even-vertical
+      layout: tiled
       panes:
-        - shell:
-            - source __VENV_ACTIVATE_PATH__
-            - # Just keep the shell active
-        - user_input:
-            - source __VENV_ACTIVATE_PATH__
-            - python -m ai_masa.agents.user_input_agent User
-        - gemini:
-            - source __VENV_ACTIVATE_PATH__
-            - python -m ai_masa.agents.gemini_cli_agent GeminiCliAgent Japanese
-        - logging:
-            - source __VENV_ACTIVATE_PATH__
-            - python -m ai_masa.agents.logging_agent LoggingAgent
+__AGENT_PANES__

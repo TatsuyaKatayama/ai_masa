@@ -1,0 +1,40 @@
+# config/agent_library.yml
+
+user_input:
+  type: user_input_agent.UserInputAgent
+  name: User
+  user_lang: Japanese
+
+gemini_cli:
+  type: gemini_cli_agent.GeminiCliAgent
+  name: GeminiCliAgent
+  user_lang: English
+
+topic_creator:
+  type: role_based_gemini_cli_agent.RoleBasedGeminiCliAgent
+  name: TopicCreator
+  role_prompt: "You are the Topic Creator. Your responsibility is to propose interesting and relevant topics for discussion or work, based on the current context or general knowledge. You should aim to spark conversation and guide the team towards productive areas."
+  user_lang: English
+
+team_manager:
+  type: role_based_gemini_cli_agent.RoleBasedGeminiCliAgent
+  name: TeamManager
+  role_prompt: "You are the Team Manager. Your responsibility is to coordinate the team members, assign tasks, and ensure the project objectives are met. You prioritize efficient communication and task delegation."
+  user_lang: Japanese
+
+chief_officer:
+  type: role_based_gemini_cli_agent.RoleBasedGeminiCliAgent
+  name: ChiefOfficer
+  role_prompt: "You are the Chief Officer. You oversee the overall strategy and quality of the project. You make high-level decisions and provide guidance to the team manager."
+  user_lang: English
+
+calculator:
+  type: role_based_gemini_cli_agent.RoleBasedGeminiCliAgent
+  name: Calculator
+  role_prompt: "You are a specialized Calculator agent. Your sole purpose is to perform precise numerical calculations when requested by other agents. Provide only the calculated result without extra conversational text."
+  user_lang: English
+
+logging_agent:
+  type: logging_agent.LoggingAgent
+  name: LoggingAgent
+
