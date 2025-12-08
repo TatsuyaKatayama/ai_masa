@@ -38,3 +38,7 @@ logging_agent:
   type: logging_agent.LoggingAgent
   name: LoggingAgent
 
+kintaikun:
+  type: kintai_agent.KintaiAgent
+  name: Kintaikun
+

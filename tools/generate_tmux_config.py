@@ -3,7 +3,7 @@ import sys
 import os
 import shlex
 
-def build_agent_panes(team_name, project_root, venv_activate_path):
+def build_panes(team_name, project_root, venv_activate_path):
     agent_library_path = os.path.join(project_root, 'config', 'agent_library.yml')
     team_library_path = os.path.join(project_root, 'config', 'team_library.yml')
 
@@ -13,19 +13,16 @@ def build_agent_panes(team_name, project_root, venv_activate_path):
     with open(team_library_path, 'r') as f:
         team_library = yaml.safe_load(f)
 
-    selected_team_members = [] # Initialize to avoid UnboundLocalError
     try:
         selected_team_members = team_library[team_name]
     except KeyError:
         print(f"Error: Team '{team_name}' not found in {team_library_path}", file=sys.stderr)
         sys.exit(1)
     
-    panes = []
+    user_input_logging_panes = []
+    other_agent_panes = []
 
-    # Add a generic shell pane at the start for debugging/overall control
-    panes.append("        - shell:\n            - source " + venv_activate_path)
-    panes.append("            - # Generic shell pane")
-
+    # Build panes for each agent
     for member_key in selected_team_members:
         try:
             agent_config = agent_library[member_key]
@@ -33,30 +30,27 @@ def build_agent_panes(team_name, project_root, venv_activate_path):
             print(f"Error: Agent '{member_key}' not found in {agent_library_path}", file=sys.stderr)
             sys.exit(1)
 
-        agent_type_full = agent_config['type'] # e.g., user_input_agent.UserInputAgent
-        agent_module_path = '.'.join(agent_type_full.split('.')[:-1]) # e.g., user_input_agent
-        agent_class_name = agent_type_full.split('.')[-1] # e.g., UserInputAgent
+        agent_type_full = agent_config['type']
+        agent_module_path = '.'.join(agent_type_full.split('.')[:-1])
         agent_name_in_config = agent_config.get('name', member_key)
         user_lang = agent_config.get('user_lang', 'English')
         role_prompt = agent_config.get('role_prompt')
 
-        # Base command for all agents
         command_parts = [
             f"python -m ai_masa.agents.{agent_module_path}",
             shlex.quote(agent_name_in_config),
         ]
-        if agent_module_path != 'user_input_agent':
+        if 'user_input_agent' not in agent_module_path:
             command_parts.append(shlex.quote(user_lang))
 
-        if agent_module_path == 'user_input_agent':
-            # Find the next agent in the team to be the default target
+        if 'user_input_agent' in agent_module_path:
             try:
                 current_index = selected_team_members.index(member_key)
                 if current_index + 1 < len(selected_team_members):
                     next_member_key = selected_team_members[current_index + 1]
                     next_agent_name = agent_library[next_member_key].get('name', next_member_key)
                     command_parts.append(f"--default_target_agent {shlex.quote(next_agent_name)}")
-            except ValueError: # user_input_agent not found in list (shouldn't happen if it's being iterated)
+            except ValueError:
                 pass
 
         if 'role_based' in agent_module_path.lower() and role_prompt:
@@ -64,37 +58,40 @@ def build_agent_panes(team_name, project_root, venv_activate_path):
         
         command = " ".join(command_parts)
         
-        # Add log redirection for non-user_input agents
-        log_dir = os.path.join(project_root, 'logs')
-        log_path = os.path.join(log_dir, f"{agent_name_in_config}.log")
-        if agent_module_path != 'user_input_agent': # Use module path for comparison
-             command = f"mkdir -p {log_dir} && {command} > {shlex.quote(log_path)} 2>&1"
+        pane_str = f"        - {member_key.lower().replace(' ', '_')}:\n            - source {venv_activate_path}\n            - {command}"
 
+        if 'user_input_agent' in agent_module_path or 'logging_agent' in agent_module_path:
+            user_input_logging_panes.append(pane_str)
+        else:
+            other_agent_panes.append(pane_str)
 
-        panes.append(f"        - {member_key.lower().replace(' ', '_')}:\n            - source {venv_activate_path}") # Use member_key for pane name
-        panes.append(f"            - {command}")
+    # Build the shell pane separately
+    shell_pane = f"            - source {venv_activate_path}\n            - # Generic shell pane"
 
-    return "\n".join(panes)
+    return "\n".join(user_input_logging_panes), shell_pane, "\n".join(other_agent_panes)
 
-def generate_config(team_name, project_root, venv_activate_path, template_path, output_path):
+def generate_config(team_name, project_root, venv_activate_path, template_path, output_path, project_name):
     """Generates the final tmuxinator config file."""
-    agent_panes_str = build_agent_panes(team_name, project_root, venv_activate_path)
+    user_input_logging_panes_str, shell_pane_str, other_agent_panes_str = build_panes(team_name, project_root, venv_activate_path)
 
     with open(template_path, 'r') as f:
         template_content = f.read()
     
     # Replace placeholders
     config_content = template_content.replace('__PROJECT_ROOT__', project_root)
-    config_content = config_content.replace('__AGENT_PANES__', agent_panes_str)
+    config_content = config_content.replace('__PROJECT_NAME__', project_name)
+    config_content = config_content.replace('__USER_INPUT_LOGGING_PANES__', user_input_logging_panes_str)
+    config_content = config_content.replace('__SHELL_PANE__', shell_pane_str)
+    config_content = config_content.replace('__OTHER_AGENT_PANES__', other_agent_panes_str)
 
     with open(output_path, 'w') as f:
         f.write(config_content)
 
 if __name__ == '__main__':
-    if len(sys.argv) != 6:
-        print(f"Usage: python {sys.argv[0]} <team_name> <project_root> <venv_activate_path> <template_path> <output_path>", file=sys.stderr)
+    if len(sys.argv) != 7:
+        print(f"Usage: python {sys.argv[0]} <team_name> <project_root> <venv_activate_path> <template_path> <output_path> <project_name>", file=sys.stderr)
         sys.exit(1)
     
-    team_name, project_root, venv_activate_path, template_path, output_path = sys.argv[1:6]
+    team_name, project_root, venv_activate_path, template_path, output_path, project_name = sys.argv[1:7]
     
-    generate_config(team_name, project_root, venv_activate_path, template_path, output_path)
+    generate_config(team_name, project_root, venv_activate_path, template_path, output_path, project_name)
