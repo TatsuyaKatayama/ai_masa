@@ -1,6 +1,7 @@
 #!/bin/bash
 
 orchestrate_agents() {
+    local team_name="$1"
     echo "Orchestrating agents with tmuxinator..."
 
     # 1. tmuxinatorの存在チェック
@@ -10,7 +11,7 @@ orchestrate_agents() {
         exit 1
     fi
 
-    local project_name="ai_masa_orchestration"
+    local project_name="ai_masa_orchestration_3pane"
     local project_root="$(dirname "$(realpath "$0")")"
     local project_working_dir="${project_root}/works/${project_name}"
     local config_path="${project_working_dir}/${project_name}.yml"
@@ -31,7 +32,12 @@ orchestrate_agents() {
     mkdir -p "${project_working_dir}/logs"
     
     # Generate tmuxinator config from template
-    local selected_team="${AI_MASA_TEAM:-default_team}" # Get team name from AI_MASA_TEAM env var, default to default_team
+    if [ -z "${team_name}" ]; then
+        echo "Error: Team name must be provided as the first argument."
+        echo "Usage: $0 <team_name>"
+        exit 1
+    fi
+    local selected_team="${team_name}" # Get team name from the first script argument
     echo "Debug: Selected team is ${selected_team}"
 
     if ! python "${project_root}/tools/generate_tmux_config.py" \
@@ -39,7 +45,8 @@ orchestrate_agents() {
             "${project_root}" \
             "${venv_path}" \
             "${template_path}" \
-            "${config_path}"; then
+            "${config_path}" \
+            "${project_name}"; then
         echo "Error: Failed to generate tmuxinator config."
         exit 1
     fi
@@ -52,4 +59,4 @@ orchestrate_agents() {
     tmuxinator start -p "$config_path"
 }
 
-orchestrate_agents
+orchestrate_agents "$@"
