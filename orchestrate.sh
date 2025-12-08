@@ -30,39 +30,19 @@ orchestrate_agents() {
     # 3. works ディレクトリと設定ファイルをテンプレートから生成
     mkdir -p "${project_working_dir}/logs"
     
-    # sedでプレースホルダーを置換
+    # Generate tmuxinator config from template
     local selected_team="${AI_MASA_TEAM:-default_team}" # Get team name from AI_MASA_TEAM env var, default to default_team
     echo "Debug: Selected team is ${selected_team}"
 
-    # Generate agent panes content into a temporary file
-    local tmp_panes_file=$(mktemp)
-    if ! python "${project_root}/tools/build_agent_panes.py" "${selected_team}" "${project_root}" "${venv_path}" > "$tmp_panes_file"; then
-        echo "Error: Failed to generate agent panes."
-        rm "$tmp_panes_file"
+    if ! python "${project_root}/tools/generate_tmux_config.py" \
+            "${selected_team}" \
+            "${project_root}" \
+            "${venv_path}" \
+            "${template_path}" \
+            "${config_path}"; then
+        echo "Error: Failed to generate tmuxinator config."
         exit 1
     fi
-
-    # Use awk to perform replacements, including injecting content from the temp file for agent panes
-    awk -v project_root="${project_root}" \
-        -v venv_activate_path="${venv_path}" \
-        -v project_name="${project_name}" \
-        -v agent_panes_file="${tmp_panes_file}" \
-        '{ \
-            gsub(/__PROJECT_ROOT__/, project_root); \
-            gsub(/__VENV_ACTIVATE_PATH__/, venv_activate_path); \
-            gsub(/__PROJECT_NAME__/, project_name); \
-            if ($0 ~ /__AGENT_PANES__/) { \
-                while ((getline line < agent_panes_file) > 0) { \
-                    print line \
-                }; \
-                close(agent_panes_file); \
-            } else { \
-                print \
-            } \
-        }' "$template_path" > "$config_path"
-    
-    # Clean up the temporary file
-    rm "$tmp_panes_file"
     
     echo "✅ Generated tmuxinator config at $config_path"
     echo "✅ Ensured works directory exists at ${project_working_dir}"
