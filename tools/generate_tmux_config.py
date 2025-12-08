@@ -76,13 +76,25 @@ def build_agent_panes(team_name, project_root, venv_activate_path):
 
     return "\n".join(panes)
 
+def generate_config(team_name, project_root, venv_activate_path, template_path, output_path):
+    """Generates the final tmuxinator config file."""
+    agent_panes_str = build_agent_panes(team_name, project_root, venv_activate_path)
+
+    with open(template_path, 'r') as f:
+        template_content = f.read()
+    
+    # Replace placeholders
+    config_content = template_content.replace('__PROJECT_ROOT__', project_root)
+    config_content = config_content.replace('__AGENT_PANES__', agent_panes_str)
+
+    with open(output_path, 'w') as f:
+        f.write(config_content)
+
 if __name__ == '__main__':
-    if len(sys.argv) < 4:
-        print("Usage: python build_agent_panes.py <team_name> <project_root> <venv_activate_path>", file=sys.stderr)
+    if len(sys.argv) != 6:
+        print(f"Usage: python {sys.argv[0]} <team_name> <project_root> <venv_activate_path> <template_path> <output_path>", file=sys.stderr)
         sys.exit(1)
     
-    team_name = sys.argv[1]
-    project_root = sys.argv[2]
-    venv_activate_path = sys.argv[3]
+    team_name, project_root, venv_activate_path, template_path, output_path = sys.argv[1:6]
     
-    print(build_agent_panes(team_name, project_root, venv_activate_path))
+    generate_config(team_name, project_root, venv_activate_path, template_path, output_path)
