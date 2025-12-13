@@ -1,8 +1,10 @@
+import os
 import unittest
 import threading
 import time
 import uuid
 import json
+import yaml
 from ai_masa.agents.kintai_agent import KintaiAgent
 from ai_masa.agents.role_based_gemini_cli_agent import RoleBasedGeminiCliAgent
 from ai_masa.comms.redis_broker import RedisBroker
@@ -18,11 +20,34 @@ class TestE2ETeamInteraction(unittest.TestCase):
         Set up the test environment by starting the necessary agents in
         separate threads.
         """
+        self.job_id = str(uuid.uuid4())
+        
+        # Load agent configuration from the default file
+        config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'agent_library.yml.default')
+        if not os.path.exists(config_path):
+            self.fail(f"Default agent config not found at {config_path}")
+        with open(config_path, 'r') as f:
+            full_config = yaml.safe_load(f)
+
+        # Get configs for specific agents
+        kintai_config = full_config['kintaikun'].copy()
+        manager_config = full_config['team_manager'].copy()
+
+        # Override names for test isolation
         self.kintai_agent_name = "Kintaikun_E2E"
         self.team_manager_name = "TeamManager_E2E"
         self.user_agent_name = "User_E2E"
-        self.job_id = str(uuid.uuid4())
         
+        kintai_config['name'] = self.kintai_agent_name
+        manager_config['name'] = self.team_manager_name
+        
+        # Override role_prompt for this specific test scenario
+        manager_config['role_prompt'] = (
+            "You are a Team Manager. If a user asks about team members and mentions "
+            f"'{self.kintai_agent_name}', you MUST ask '{self.kintai_agent_name}' for the list of active agents. "
+            "After receiving the list, you MUST report that information back to the user in Japanese."
+        )
+
         self.broker = RedisBroker()
         self.broker.connect()
         self.pubsub = self.broker.client.pubsub()
@@ -31,19 +56,11 @@ class TestE2ETeamInteraction(unittest.TestCase):
         self.threads = []
 
         # 1. Start KintaiAgent
-        self.kintai_agent = KintaiAgent(name=self.kintai_agent_name)
+        self.kintai_agent = KintaiAgent(**kintai_config)
         self._start_agent(self.kintai_agent)
 
         # 2. Start TeamManager
-        self.team_manager = RoleBasedGeminiCliAgent(
-            name=self.team_manager_name,
-            role_prompt=(
-                "You are a Team Manager. If a user asks about team members and mentions "
-                f"'{self.kintai_agent_name}', you MUST ask '{self.kintai_agent_name}' for the list of active agents. "
-                "After receiving the list, you MUST report that information back to the user in Japanese."
-            ),
-            user_lang="Japanese"
-        )
+        self.team_manager = RoleBasedGeminiCliAgent(**manager_config)
         self._start_agent(self.team_manager)
 
         # Allow agents time to initialize and subscribe

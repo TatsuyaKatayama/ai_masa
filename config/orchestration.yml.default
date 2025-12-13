@@ -1,0 +1,23 @@
+# This is the orchestration configuration file.
+# You can define multiple orchestration settings here.
+# To run a specific setting, execute: ./orchestrate.sh <setting_name>
+# If no setting_name is provided, 'default' will be used.
+
+default:
+  # The name of the tmuxinator project.
+  # Config files will be generated in {session_root}/{project_name}/
+  project_name: ai_masa_orchestration
+  # The name of the team to launch (must be defined in config/team_library.yml)
+  team_name: analysis_team
+  # The tmuxinator template to use (located in config/templates/)
+  template: orchestration.yml.template
+  # The root directory for the tmux session, relative to the ai_masa project root.
+  session_root: "works"
+
+# Example of another configuration
+# To run this, use: ./orchestrate.sh 3pane
+3pane:
+  project_name: ai_masa_orchestration_3pane
+  team_name: analysis_team
+  template: orchestration.yml.template
+  session_root: "works"

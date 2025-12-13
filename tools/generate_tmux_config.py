@@ -3,20 +3,31 @@ import sys
 import os
 import shlex
 
+def load_yaml_config(config_path):
+    """Loads a YAML config file, falling back to a .default version if it exists."""
+    if not os.path.exists(config_path):
+        default_path = f"{config_path}.default"
+        if os.path.exists(default_path):
+            print(f"Info: Using default config '{default_path}'", file=sys.stderr)
+            config_path = default_path
+        else:
+            print(f"Error: Config file not found at '{config_path}' or '{default_path}'", file=sys.stderr)
+            sys.exit(1)
+            
+    with open(config_path, 'r') as f:
+        return yaml.safe_load(f)
+
 def build_panes(team_name, ai_masa_project_root, venv_activate_path):
     agent_library_path = os.path.join(ai_masa_project_root, 'config', 'agent_library.yml')
     team_library_path = os.path.join(ai_masa_project_root, 'config', 'team_library.yml')
 
-    with open(agent_library_path, 'r') as f:
-        agent_library = yaml.safe_load(f)
-
-    with open(team_library_path, 'r') as f:
-        team_library = yaml.safe_load(f)
+    agent_library = load_yaml_config(agent_library_path)
+    team_library = load_yaml_config(team_library_path)
 
     try:
         selected_team_members = team_library[team_name]
     except KeyError:
-        print(f"Error: Team '{team_name}' not found in {team_library_path}", file=sys.stderr)
+        print(f"Error: Team '{team_name}' not found in the loaded team library", file=sys.stderr)
         sys.exit(1)
     
     user_input_logging_panes = []
@@ -27,7 +38,7 @@ def build_panes(team_name, ai_masa_project_root, venv_activate_path):
         try:
             agent_config = agent_library[member_key]
         except KeyError:
-            print(f"Error: Agent '{member_key}' not found in {agent_library_path}", file=sys.stderr)
+            print(f"Error: Agent '{member_key}' not found in the loaded agent library", file=sys.stderr)
             sys.exit(1)
 
         agent_type_full = agent_config['type']
@@ -62,7 +73,7 @@ def build_panes(team_name, ai_masa_project_root, venv_activate_path):
         
         command = " ".join(command_parts)
         
-        pane_str = f"        - {member_key.lower().replace(' ', '_')}:\n            - source {venv_activate_path}\n            - {command}"
+        pane_str = f"        - {member_key.lower().replace(' ', '_')}:\n - source {venv_activate_path}\n  - {command}"
 
         if 'user_input_agent' in agent_module_path or 'logging_agent' in agent_module_path:
             user_input_logging_panes.append(pane_str)

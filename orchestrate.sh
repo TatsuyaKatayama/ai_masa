@@ -1,64 +1,114 @@
 #!/bin/bash
 
+# --- Helper Functions ---
+# Checks for the presence of a command.
+command_exists() {
+    command -v "$1" &> /dev/null
+}
+
+# Exits with an error message.
+fail() {
+    echo "Error: $1" >&2
+    exit 1
+}
+
+# --- Main Orchestration Logic ---
 orchestrate_agents() {
-    local team_name="$1"
-    echo "Orchestrating agents with tmuxinator..."
-
-    # 1. tmuxinatorの存在チェック
-    if ! command -v tmuxinator &> /dev/null; then
-        echo "Error: tmuxinator is not installed."
-        echo "Please install it first. (e.g., 'gem install tmuxinator')"
-        exit 1
+    # 1. Project Root and Prerequisite Checks
+    # Ensure the script is run from the project root by checking for a sentinel file.
+    if [ ! -f "pyproject.toml" ]; then
+        fail "This script must be run from the root of the ai_masa project."
     fi
 
-    local project_name="ai_masa_orchestration_3pane"
-    local ai_masa_project_root="$(dirname "$(realpath "$0")")"
-    local project_working_dir="${ai_masa_project_root}/works/${project_name}"
-    local config_path="${project_working_dir}/${project_name}.yml"
-    local template_path="${ai_masa_project_root}/config/templates/orchestration.yml.template"
-    local venv_path="$(realpath "${ai_masa_project_root}/../.venv/bin/activate")"
-    local tmuxinator_session_root="${ai_masa_project_root}/works"
+    if ! command_exists tmuxinator;
+     then
+        fail "tmuxinator is not installed. Please run 'gem install tmuxinator'."
+    fi
 
-    # 2. venvとテンプレートファイルの存在チェック
+    local venv_path="./.venv/bin/activate"
     if [ ! -f "$venv_path" ]; then
-        echo "Error: Virtual environment activation script not found at $venv_path"
-        exit 1
-    fi
-    if [ ! -f "$template_path" ]; then
-        echo "Error: Template file not found at $template_path"
-        exit 1
+        fail "Virtual environment not found at '$venv_path'. Please run setup scripts."
     fi
 
-    # 3. works ディレクトリと設定ファイルをテンプレートから生成
+    # 2. Load Orchestration Config
+    local orchestration_config_path="./config/orchestration.yml"
+    local default_orchestration_config_path="${orchestration_config_path}.default"
+
+    if [ -f "$orchestration_config_path" ]; then
+        # Use user's config
+        : # Pass
+    elif [ -f "$default_orchestration_config_path" ]; then
+        echo "Info: User 'orchestration.yml' not found. Using default."
+        orchestration_config_path=$default_orchestration_config_path
+    else
+        fail "Orchestration config not found at '$orchestration_config_path' or '$default_orchestration_config_path'."
+    fi
+
+    # 3. Determine Selected Orchestration Setting
+    local setting_name="${1:-default}" # Use first argument or 'default'
+    echo "Using orchestration setting: '${setting_name}'"
+
+    # Use a Python script to parse YAML, as it's safer than bash parsing.
+    local config_values
+    config_values=$(python -c "
+import yaml, sys
+try:
+    with open('$orchestration_config_path', 'r') as f:
+        data = yaml.safe_load(f)
+    setting = data['$setting_name']
+    print(setting.get('project_name', ''))
+    print(setting.get('team_name', ''))
+    print(setting.get('template', ''))
+    print(setting.get('session_root', 'works'))
+except (KeyError, FileNotFoundError):
+    sys.exit(1)
+")
+    
+    if [ -z "$config_values" ]; then
+        fail "Could not find setting '${setting_name}' in '$orchestration_config_path'."
+    fi
+
+    # Read parsed values into variables
+    local project_name team_name template session_root
+    read -r project_name team_name template session_root <<< "$config_values"
+
+    if [ -z "$project_name" ] || [ -z "$team_name" ] || [ -z "$template" ]; then
+        fail "Setting '${setting_name}' is missing one or more required keys (project_name, team_name, template)."
+    fi
+
+    # 4. Set up Paths
+    local ai_masa_project_root="."
+    local tmuxinator_session_root="${session_root}"
+    local project_working_dir="${tmuxinator_session_root}/${project_name}"
+    local tmux_config_path="${project_working_dir}/${project_name}.yml"
+    local template_path="./config/templates/${template}"
+
+    if [ ! -f "$template_path" ]; then
+        fail "Template file not found at '$template_path'."
+    fi
+
+    # 5. Generate Tmuxinator Config
     mkdir -p "${project_working_dir}/logs"
     
-    # Generate tmuxinator config from template
-    if [ -z "${team_name}" ]; then
-        echo "Error: Team name must be provided as the first argument."
-        echo "Usage: $0 <team_name>"
-        exit 1
-    fi
-    local selected_team="${team_name}" # Get team name from the first script argument
-    echo "Debug: Selected team is ${selected_team}"
-
-    if ! python "${ai_masa_project_root}/tools/generate_tmux_config.py" \
-            "${selected_team}" \
+    echo "Generating tmuxinator config for team '${team_name}'..."
+    
+    if ! python "./tools/generate_tmux_config.py" \
+            "${team_name}" \
             "${ai_masa_project_root}" \
             "${tmuxinator_session_root}" \
-            "${venv_path}" \
+            "$(realpath "$venv_path")" \
             "${template_path}" \
-            "${config_path}" \
+            "${tmux_config_path}" \
             "${project_name}"; then
-        echo "Error: Failed to generate tmuxinator config."
-        exit 1
+        fail "Failed to generate tmuxinator config."
     fi
     
-    echo "✅ Generated tmuxinator config at $config_path"
-    echo "✅ Ensured works directory exists at ${project_working_dir}"
+    echo "✅ Generated tmuxinator config at '$tmux_config_path'"
+    echo "✅ Project working directory is '$project_working_dir'"
 
-    # 4. tmuxinatorセッションを開始 (-pオプションで設定ファイルを直接指定)
-    echo "🚀 Starting tmuxinator session using config: $config_path"
-    tmuxinator start -p "$config_path"
+    # 6. Start Tmuxinator Session
+    echo "🚀 Starting tmuxinator session..."
+    tmuxinator start -p "$tmux_config_path"
 }
 
 orchestrate_agents "$@"
