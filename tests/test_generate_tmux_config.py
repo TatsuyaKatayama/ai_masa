@@ -29,6 +29,13 @@ class TestGenerateTmuxConfig(unittest.TestCase):
                     'type': 'role_based_gemini_cli_agent.RoleBasedGeminiCliAgent',
                     'user_lang': 'Japanese',
                     'role_prompt': 'You are a professional programmer.'
+                },
+                'foamer': {
+                    'name': 'Foamer',
+                    'type': 'role_based_gemini_cli_agent.RoleBasedGeminiCliAgent',
+                    'user_lang': 'English',
+                    'role_prompt': 'You are an expert OpenFOAM user.',
+                    'llm_command': 'gemini -y --resume {session_id} --output-format json'
                 }
             }, f)
 
@@ -36,7 +43,7 @@ class TestGenerateTmuxConfig(unittest.TestCase):
         self.team_library_path = os.path.join(self.config_dir, 'team_library.yml')
         with open(self.team_library_path, 'w') as f:
             yaml.dump({
-                'test_team': ['user_proxy', 'coder']
+                'test_team': ['user_proxy', 'coder', 'foamer']
             }, f)
 
         # Mock orchestration.yml.template
@@ -48,7 +55,9 @@ class TestGenerateTmuxConfig(unittest.TestCase):
             f.write("  - agents:\n")
             f.write("      layout: tiled\n")
             f.write("      panes:\n")
-            f.write("__AGENT_PANES__\n")
+            f.write("__USER_INPUT_LOGGING_PANES__\n")
+            f.write("__SHELL_PANE__\n")
+            f.write("__OTHER_AGENT_PANES__\n")
             
         # Mock venv path
         self.venv_path = os.path.join(self.test_dir, '.venv', 'bin', 'activate')
@@ -70,7 +79,8 @@ class TestGenerateTmuxConfig(unittest.TestCase):
             project_root=self.project_root,
             venv_activate_path=self.venv_path,
             template_path=self.template_path,
-            output_path=self.output_path
+            output_path=self.output_path,
+            project_name='test_project'
         )
 
         # Verify the output file exists
@@ -83,22 +93,17 @@ class TestGenerateTmuxConfig(unittest.TestCase):
         # Check project root replacement
         self.assertIn(f"root: {self.project_root}", content)
         
-        # Check for shell pane
-        self.assertIn("- shell:", content)
-        
         # Check for user_proxy pane
         self.assertIn("- user_proxy:", content)
         self.assertIn(f"python -m ai_masa.agents.user_input_agent UserProxy --default_target_agent Coder", content)
-        
+
         # Check for coder pane (and its command details)
         self.assertIn("- coder:", content)
-        log_dir = os.path.join(self.project_root, 'logs')
-        log_path = os.path.join(log_dir, 'Coder.log')
-        expected_coder_cmd = (
-            f"mkdir -p {log_dir} && "
-            f"python -m ai_masa.agents.role_based_gemini_cli_agent Coder Japanese --role_prompt 'You are a professional programmer.' > {shlex.quote(log_path)} 2>&1"
-        )
-        self.assertIn(expected_coder_cmd, content)
+        self.assertIn(f"python -m ai_masa.agents.role_based_gemini_cli_agent Coder Japanese --role_prompt 'You are a professional programmer.'", content)
+
+        # Check for foamer pane (and its command details including llm_command)
+        self.assertIn("- foamer:", content)
+        self.assertIn(f"python -m ai_masa.agents.role_based_gemini_cli_agent Foamer English --role_prompt 'You are an expert OpenFOAM user.' --llm_command 'gemini -y --resume {{session_id}} --output-format json'", content)
 
 
 if __name__ == '__main__':
