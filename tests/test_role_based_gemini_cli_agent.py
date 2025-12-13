@@ -34,5 +34,28 @@ class TestRoleBasedGeminiCliAgent(unittest.TestCase):
         self.assertIsNotNone(agent.llm_command)
         self.assertIn("gemini", agent.llm_command)
 
+    @patch('subprocess.run') # Mock subprocess.run to prevent actual command execution
+    def test_instantiation_with_custom_llm_command(self, mock_subprocess_run):
+        """
+        Test that RoleBasedGeminiCliAgent can be instantiated with a custom llm_command,
+        and that the custom command is correctly assigned.
+        """
+        mock_subprocess_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
+
+        agent_name = "TestCustomLlmAgent"
+        role_prompt_text = "You are an agent with a custom LLM command."
+        custom_llm_command = "my_custom_llm_cli --model custom-model --param value"
+        
+        agent = RoleBasedGeminiCliAgent(
+            name=agent_name,
+            role_prompt=role_prompt_text,
+            llm_command=custom_llm_command,
+            start_heartbeat=False
+        )
+
+        self.assertEqual(agent.name, agent_name)
+        self.assertIn(role_prompt_text, agent.role_prompt)
+        self.assertEqual(agent.llm_command, custom_llm_command)
+
 if __name__ == '__main__':
     unittest.main()

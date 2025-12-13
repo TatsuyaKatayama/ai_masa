@@ -14,6 +14,13 @@ analysis_team:
   - logging_agent 
   - kintaikun 
 
+team_openfoam:
+  - user_input
+  - foam_manager
+  - foamer
+  - logging_agent 
+  - kintaikun 
+
 creative_team:
   - user_input
   - team_manager

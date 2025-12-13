@@ -3,9 +3,9 @@ import sys
 import os
 import shlex
 
-def build_panes(team_name, project_root, venv_activate_path):
-    agent_library_path = os.path.join(project_root, 'config', 'agent_library.yml')
-    team_library_path = os.path.join(project_root, 'config', 'team_library.yml')
+def build_panes(team_name, ai_masa_project_root, venv_activate_path):
+    agent_library_path = os.path.join(ai_masa_project_root, 'config', 'agent_library.yml')
+    team_library_path = os.path.join(ai_masa_project_root, 'config', 'team_library.yml')
 
     with open(agent_library_path, 'r') as f:
         agent_library = yaml.safe_load(f)
@@ -35,6 +35,7 @@ def build_panes(team_name, project_root, venv_activate_path):
         agent_name_in_config = agent_config.get('name', member_key)
         user_lang = agent_config.get('user_lang', 'English')
         role_prompt = agent_config.get('role_prompt')
+        llm_command = agent_config.get('llm_command')
 
         command_parts = [
             f"python -m ai_masa.agents.{agent_module_path}",
@@ -56,6 +57,9 @@ def build_panes(team_name, project_root, venv_activate_path):
         if 'role_based' in agent_module_path.lower() and role_prompt:
             command_parts.append(f"--role_prompt {shlex.quote(role_prompt)}")
         
+        if llm_command:
+            command_parts.append(f'--llm_command {shlex.quote(llm_command)}')
+        
         command = " ".join(command_parts)
         
         pane_str = f"        - {member_key.lower().replace(' ', '_')}:\n            - source {venv_activate_path}\n            - {command}"
@@ -70,15 +74,15 @@ def build_panes(team_name, project_root, venv_activate_path):
 
     return "\n".join(user_input_logging_panes), shell_pane, "\n".join(other_agent_panes)
 
-def generate_config(team_name, project_root, venv_activate_path, template_path, output_path, project_name):
+def generate_config(team_name, ai_masa_project_root, tmuxinator_session_root, venv_activate_path, template_path, output_path, project_name):
     """Generates the final tmuxinator config file."""
-    user_input_logging_panes_str, shell_pane_str, other_agent_panes_str = build_panes(team_name, project_root, venv_activate_path)
+    user_input_logging_panes_str, shell_pane_str, other_agent_panes_str = build_panes(team_name, ai_masa_project_root, venv_activate_path)
 
     with open(template_path, 'r') as f:
         template_content = f.read()
     
     # Replace placeholders
-    config_content = template_content.replace('__PROJECT_ROOT__', project_root)
+    config_content = template_content.replace('__PROJECT_ROOT__', tmuxinator_session_root)
     config_content = config_content.replace('__PROJECT_NAME__', project_name)
     config_content = config_content.replace('__USER_INPUT_LOGGING_PANES__', user_input_logging_panes_str)
     config_content = config_content.replace('__SHELL_PANE__', shell_pane_str)
@@ -88,10 +92,10 @@ def generate_config(team_name, project_root, venv_activate_path, template_path, 
         f.write(config_content)
 
 if __name__ == '__main__':
-    if len(sys.argv) != 7:
-        print(f"Usage: python {sys.argv[0]} <team_name> <project_root> <venv_activate_path> <template_path> <output_path> <project_name>", file=sys.stderr)
+    if len(sys.argv) != 8:
+        print(f"Usage: python {sys.argv[0]} <team_name> <ai_masa_project_root> <tmuxinator_session_root> <venv_activate_path> <template_path> <output_path> <project_name>", file=sys.stderr)
         sys.exit(1)
     
-    team_name, project_root, venv_activate_path, template_path, output_path, project_name = sys.argv[1:7]
+    team_name, ai_masa_project_root, tmuxinator_session_root, venv_activate_path, template_path, output_path, project_name = sys.argv[1:8]
     
-    generate_config(team_name, project_root, venv_activate_path, template_path, output_path, project_name)
+    generate_config(team_name, ai_masa_project_root, tmuxinator_session_root, venv_activate_path, template_path, output_path, project_name)

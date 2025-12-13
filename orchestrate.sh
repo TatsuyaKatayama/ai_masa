@@ -12,11 +12,12 @@ orchestrate_agents() {
     fi
 
     local project_name="ai_masa_orchestration_3pane"
-    local project_root="$(dirname "$(realpath "$0")")"
-    local project_working_dir="${project_root}/works/${project_name}"
+    local ai_masa_project_root="$(dirname "$(realpath "$0")")"
+    local project_working_dir="${ai_masa_project_root}/works/${project_name}"
     local config_path="${project_working_dir}/${project_name}.yml"
-    local template_path="${project_root}/config/templates/orchestration.yml.template"
-    local venv_path="$(realpath "${project_root}/../.venv/bin/activate")"
+    local template_path="${ai_masa_project_root}/config/templates/orchestration.yml.template"
+    local venv_path="$(realpath "${ai_masa_project_root}/../.venv/bin/activate")"
+    local tmuxinator_session_root="${ai_masa_project_root}/works"
 
     # 2. venvとテンプレートファイルの存在チェック
     if [ ! -f "$venv_path" ]; then
@@ -40,9 +41,10 @@ orchestrate_agents() {
     local selected_team="${team_name}" # Get team name from the first script argument
     echo "Debug: Selected team is ${selected_team}"
 
-    if ! python "${project_root}/tools/generate_tmux_config.py" \
+    if ! python "${ai_masa_project_root}/tools/generate_tmux_config.py" \
             "${selected_team}" \
-            "${project_root}" \
+            "${ai_masa_project_root}" \
+            "${tmuxinator_session_root}" \
             "${venv_path}" \
             "${template_path}" \
             "${config_path}" \
