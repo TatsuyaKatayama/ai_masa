@@ -76,7 +76,8 @@ class TestGenerateTmuxConfig(unittest.TestCase):
         # Run the config generation
         generate_config(
             team_name='test_team',
-            project_root=self.project_root,
+            ai_masa_project_root=self.project_root,
+            tmuxinator_session_root=self.project_root,
             venv_activate_path=self.venv_path,
             template_path=self.template_path,
             output_path=self.output_path,
