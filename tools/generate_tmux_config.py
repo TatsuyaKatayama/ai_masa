@@ -73,7 +73,11 @@ def build_panes(team_name, ai_masa_project_root, venv_activate_path):
         
         command = " ".join(command_parts)
         
-        pane_str = f"        - {member_key.lower().replace(' ', '_')}:\n - source {venv_activate_path}\n  - {command}"
+        pane_str = (
+            f"        - {member_key.lower().replace(' ', '_')}:\n"
+            f"            - source {venv_activate_path}\n"
+            f"            - {command}"
+        )
 
         if 'user_input_agent' in agent_module_path or 'logging_agent' in agent_module_path:
             user_input_logging_panes.append(pane_str)

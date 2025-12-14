@@ -21,3 +21,11 @@ default:
   team_name: analysis_team
   template: orchestration.yml.template
   session_root: "works"
+
+# Configuration for OpenFOAM team
+# To run this, use: ./orchestrate.sh of
+of:
+  project_name: ai_masa_openfoam
+  team_name: team_openfoam
+  template: orchestration.yml.template
+  session_root: "works/openfoam"

@@ -11,6 +11,7 @@ class BaseAgent:
     def __init__(self, name, description, user_lang='Japanese', redis_host='localhost',
                  llm_command="echo '{\"to_agent\": \"dummy\", \"content\": \"dummy response\"}'",
                  llm_session_create_command="echo 'new_session_id'",
+                 working_dir=None,
                  start_heartbeat=True):
         self.name = name
         self.description = description
@@ -18,6 +19,7 @@ class BaseAgent:
         self.language = 'en' # LLM間の会話は英語に固定
         self.llm_command = llm_command
         self.llm_session_create_command = llm_session_create_command
+        self.working_dir = working_dir
         
         # job_idごとに会話履歴とLLMセッションIDを管理
         self.context = {}  # { "job_id_1": [msg1, msg2], "job_id_2": [msg3] }
@@ -142,7 +144,8 @@ Example:
             process = subprocess.run(
                 self.llm_session_create_command,
                 input=self.role_prompt,
-                capture_output=True, text=True, shell=True, check=True
+                capture_output=True, text=True, shell=True, check=True,
+                cwd=self.working_dir
             )
             # コマンドの標準出力からセッションID（最後の行など）を取得
             session_id = process.stdout.strip().split('\n')[-1]
@@ -179,7 +182,8 @@ Example:
         try:
             process = subprocess.run(
                 command_to_run,
-                input=prompt, capture_output=True, text=True, shell=True, check=True
+                input=prompt, capture_output=True, text=True, shell=True, check=True,
+                cwd=self.working_dir
             )
             raw_stdout = process.stdout
             
