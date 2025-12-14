@@ -1,6 +1,7 @@
 import sys
 import subprocess
 import shlex
+import os
 from .base_agent import BaseAgent
 
 class GeminiCliAgent(BaseAgent):
@@ -12,6 +13,7 @@ class GeminiCliAgent(BaseAgent):
         if llm_command is None:
             llm_command = "gemini --resume {session_id} --output-format json"
         llm_session_create_command = kwargs.pop('llm_session_create_command', "")
+        working_dir = kwargs.pop('working_dir', None)
 
         final_description = description if description is not None else \
             "You are an intelligent AI assistant equipped with the Gemini CLI. Your task is to understand user messages and generate concise and accurate responses using the Gemini CLI tool."
@@ -23,8 +25,18 @@ class GeminiCliAgent(BaseAgent):
             redis_host=redis_host,
             llm_command=llm_command,
             llm_session_create_command=llm_session_create_command,
+            working_dir=working_dir,
             **kwargs # 残りのkwargsをBaseAgentに渡す
         )
+
+        if self.working_dir:
+            gemini_dir = os.path.join(self.working_dir, '.gemini')
+            settings_path = os.path.join(gemini_dir, 'settings.json')
+            os.makedirs(gemini_dir, exist_ok=True)
+            if not os.path.exists(settings_path):
+                with open(settings_path, 'w') as f:
+                    f.write('{}')
+                print(f"[{self.name}] Created {settings_path}")
 
     def _create_llm_session(self, job_id):
         """
@@ -35,7 +47,8 @@ class GeminiCliAgent(BaseAgent):
             # 既存のセッション数を数える
             result = subprocess.run(
                 "gemini --list-sessions",
-                shell=True, capture_output=True, text=True, check=False
+                shell=True, capture_output=True, text=True, check=False,
+                cwd=self.working_dir
             )
             stdout = result.stdout.strip()
             # "No sessions found." が返ってくる場合も考慮
@@ -52,11 +65,12 @@ class GeminiCliAgent(BaseAgent):
 
         # 新しいセッションを開始するために、role_promptを使って簡単なコマンドを実行する
         try:
-            # 新しいセッションインデックスを使って初期化
-            init_command = f"gemini --resume {session_index} {shlex.quote(self.role_prompt)}"
+            # --resume を付けずにコマンドを実行し、新しいセッションを作成させる
+            init_command = f"gemini {shlex.quote(self.role_prompt)}"
             subprocess.run(
                 init_command, shell=True, check=True,
-                capture_output=True, text=True, timeout=80
+                capture_output=True, text=True, timeout=80,
+                cwd=self.working_dir
             )
         except subprocess.CalledProcessError as e:
              # A one-shot command might return non-zero if it doesn't produce a "final answer"

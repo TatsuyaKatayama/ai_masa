@@ -25,7 +25,7 @@ orchestrate_agents() {
         fail "tmuxinator is not installed. Please run 'gem install tmuxinator'."
     fi
 
-    local venv_path="./.venv/bin/activate"
+    local venv_path="../.venv/bin/activate"
     if [ ! -f "$venv_path" ]; then
         fail "Virtual environment not found at '$venv_path'. Please run setup scripts."
     fi
@@ -55,12 +55,15 @@ import yaml, sys
 try:
     with open('$orchestration_config_path', 'r') as f:
         data = yaml.safe_load(f)
-    setting = data['$setting_name']
-    print(setting.get('project_name', ''))
-    print(setting.get('team_name', ''))
-    print(setting.get('template', ''))
-    print(setting.get('session_root', 'works'))
-except (KeyError, FileNotFoundError):
+    setting = data.get('$setting_name', {})
+    values = [
+        str(setting.get('project_name', '')),
+        str(setting.get('team_name', '')),
+        str(setting.get('template', '')),
+        str(setting.get('session_root', 'works'))
+    ]
+    print(' '.join(values))
+except (yaml.YAMLError, FileNotFoundError, KeyError):
     sys.exit(1)
 ")
     

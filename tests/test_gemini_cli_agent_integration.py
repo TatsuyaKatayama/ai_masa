@@ -5,6 +5,8 @@ import threading
 import time
 import json
 import sys
+import tempfile
+import shutil
 
 # パスを追加してモジュールをインポート可能にする
 # sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -33,9 +35,10 @@ class TestGeminiCliAgentIntegration(unittest.TestCase):
         self.test_channel = "ai_masa_test_channel"
         self.redis_client = redis.Redis(decode_responses=True)
         self.pubsub = self.redis_client.pubsub()
+        self.temp_dir = tempfile.mkdtemp()
 
         # テスト対象のエージェントをインスタンス化
-        self.agent = GeminiCliAgent(name=self.agent_name, user_lang='English')
+        self.agent = GeminiCliAgent(name=self.agent_name, user_lang='English', working_dir=self.temp_dir)
         self.agent.broker.channel = self.test_channel
 
         # 別スレッドでエージェントのリスナーを起動
@@ -134,6 +137,10 @@ class TestGeminiCliAgentIntegration(unittest.TestCase):
         # スレッドが終了するのを待つ
         if self.agent_thread and self.agent_thread.is_alive():
             self.agent_thread.join()
+
+        # 一時ディレクトリをクリーンアップ
+        if hasattr(self, 'temp_dir') and os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
 
         # クリーンアップ
         self.pubsub.unsubscribe()

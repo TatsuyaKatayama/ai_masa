@@ -159,7 +159,8 @@ class TestBaseAgentWithSession(unittest.TestCase):
         
         mock_subprocess_run.assert_called_once_with(
             'gemini -r session-fail',
-            input=unittest.mock.ANY, capture_output=True, text=True, shell=True, check=True
+            input=unittest.mock.ANY, capture_output=True, text=True, shell=True, check=True,
+            cwd=None
         )
         mock_broker_instance.publish.assert_not_called()
 
@@ -180,7 +181,8 @@ class TestBaseAgentWithSession(unittest.TestCase):
         # セッション作成コマンドが呼ばれるが、その後のLLMコマンドは呼ばれない
         mock_subprocess_run.assert_called_once_with(
             'create_session_cmd',
-            input=unittest.mock.ANY, capture_output=True, text=True, shell=True, check=True
+            input=unittest.mock.ANY, capture_output=True, text=True, shell=True, check=True,
+            cwd=None
         )
         mock_broker_instance.publish.assert_not_called()
 
