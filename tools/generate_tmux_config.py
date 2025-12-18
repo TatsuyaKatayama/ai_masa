@@ -32,6 +32,7 @@ def build_panes(team_name, ai_masa_project_root, venv_activate_path):
     
     user_input_logging_panes = []
     other_agent_panes = []
+    has_gemini_cli_agent = False # Flag to track gemini cli agents
 
     # Build panes for each agent
     for member_key in selected_team_members:
@@ -42,11 +43,17 @@ def build_panes(team_name, ai_masa_project_root, venv_activate_path):
             sys.exit(1)
 
         agent_type_full = agent_config['type']
+        
+        # Check for gemini_cli_agent
+        if 'gemini_cli_agent' in agent_type_full:
+            has_gemini_cli_agent = True
+
         agent_module_path = '.'.join(agent_type_full.split('.')[:-1])
         agent_name_in_config = agent_config.get('name', member_key)
         user_lang = agent_config.get('user_lang', 'English')
         role_prompt = agent_config.get('role_prompt')
         llm_command = agent_config.get('llm_command')
+        working_dir = agent_config.get('working_dir')
 
         command_parts = [
             f"python -m ai_masa.agents.{agent_module_path}",
@@ -70,6 +77,9 @@ def build_panes(team_name, ai_masa_project_root, venv_activate_path):
         
         if llm_command:
             command_parts.append(f'--llm_command {shlex.quote(llm_command)}')
+
+        if working_dir:
+            command_parts.append(f'--working_dir {shlex.quote(working_dir)}')
         
         command = " ".join(command_parts)
         
@@ -87,11 +97,11 @@ def build_panes(team_name, ai_masa_project_root, venv_activate_path):
     # Build the shell pane separately
     shell_pane = f"            - source {venv_activate_path}\n            - # Generic shell pane"
 
-    return "\n".join(user_input_logging_panes), shell_pane, "\n".join(other_agent_panes)
+    return "\n".join(user_input_logging_panes), shell_pane, "\n".join(other_agent_panes), has_gemini_cli_agent
 
 def generate_config(team_name, ai_masa_project_root, tmuxinator_session_root, venv_activate_path, template_path, output_path, project_name):
     """Generates the final tmuxinator config file."""
-    user_input_logging_panes_str, shell_pane_str, other_agent_panes_str = build_panes(team_name, ai_masa_project_root, venv_activate_path)
+    user_input_logging_panes_str, shell_pane_str, other_agent_panes_str, has_gemini_cli = build_panes(team_name, ai_masa_project_root, venv_activate_path)
 
     with open(template_path, 'r') as f:
         template_content = f.read()
@@ -106,6 +116,9 @@ def generate_config(team_name, ai_masa_project_root, tmuxinator_session_root, ve
     with open(output_path, 'w') as f:
         f.write(config_content)
 
+    # Return the flag indicating presence of gemini cli agent
+    return has_gemini_cli
+
 if __name__ == '__main__':
     if len(sys.argv) != 8:
         print(f"Usage: python {sys.argv[0]} <team_name> <ai_masa_project_root> <tmuxinator_session_root> <venv_activate_path> <template_path> <output_path> <project_name>", file=sys.stderr)
@@ -113,4 +126,6 @@ if __name__ == '__main__':
     
     team_name, ai_masa_project_root, tmuxinator_session_root, venv_activate_path, template_path, output_path, project_name = sys.argv[1:8]
     
-    generate_config(team_name, ai_masa_project_root, tmuxinator_session_root, venv_activate_path, template_path, output_path, project_name)
+    has_gemini_cli = generate_config(team_name, ai_masa_project_root, tmuxinator_session_root, venv_activate_path, template_path, output_path, project_name)
+    # Print the boolean flag as the last line of output
+    print(has_gemini_cli)

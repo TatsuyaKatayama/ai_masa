@@ -90,26 +90,65 @@ except (yaml.YAMLError, FileNotFoundError, KeyError):
         fail "Template file not found at '$template_path'."
     fi
 
+    # Check if the session root will be newly created
+    local session_root_is_new=false
+    if [ ! -d "$project_working_dir" ]; then
+        session_root_is_new=true
+    fi
+
     # 5. Generate Tmuxinator Config
     mkdir -p "${project_working_dir}/logs"
     
     echo "Generating tmuxinator config for team '${team_name}'..."
     
-    if ! python "./tools/generate_tmux_config.py" \
+    # Capture the output of the generation script
+    local generation_output
+    generation_output=$(python "./tools/generate_tmux_config.py" \
             "${team_name}" \
             "${ai_masa_project_root}" \
             "${tmuxinator_session_root}" \
             "$(realpath "$venv_path")" \
             "${template_path}" \
             "${tmux_config_path}" \
-            "${project_name}"; then
+            "${project_name}")
+    
+    if [ $? -ne 0 ]; then
         fail "Failed to generate tmuxinator config."
     fi
-    
+
+    # Extract the last line of the output to check for gemini agents
+    local has_gemini_agent
+    has_gemini_agent=$(echo "$generation_output" | tail -n 1)
+
     echo "✅ Generated tmuxinator config at '$tmux_config_path'"
     echo "✅ Project working directory is '$project_working_dir'"
+    echo "DEBUG: session_root_is_new = $session_root_is_new"
+    echo "DEBUG: has_gemini_agent = $has_gemini_agent"
 
-    # 6. Start Tmuxinator Session
+    # 6. Conditionally Delete Gemini Session
+    if [ "$session_root_is_new" = true ] && [ "$has_gemini_agent" = "True" ]; then
+        echo "Info: New session root and Gemini CLI agent detected. Deleting previous sessions..."
+        # Change to the working directory to ensure project-specific sessions are targeted
+        (
+            cd "$project_working_dir" || exit 1
+            if command_exists gemini; then
+                echo "DEBUG: Executing: gemini --delete-session latest in $PWD"
+                # stderr も含めて /dev/null にリダイレクトしていたが、エラーを確認できるように一時的に変更
+                gemini --delete-session latest #&> /dev/null
+                local delete_status=$?
+                echo "DEBUG: gemini --delete-session latest exit status: $delete_status"
+                if [ $delete_status -eq 0 ]; then
+                    echo "✅ Previous Gemini session deleted."
+                else
+                    echo "❌ Failed to delete previous Gemini session. Exit status: $delete_status"
+                fi
+            else
+                echo "Warning: 'gemini' command not found, skipping session deletion."
+            fi
+        )
+    fi
+
+    # 7. Start Tmuxinator Session
     echo "🚀 Starting tmuxinator session..."
     tmuxinator start -p "$tmux_config_path"
 }
