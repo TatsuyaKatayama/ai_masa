@@ -3,6 +3,7 @@ import json
 import subprocess
 import threading
 import time
+import os
 from ..models.message import Message
 from ..comms.redis_broker import RedisBroker
 from ..models.prompts import JSON_FORMAT_EXAMPLE, PROMPT_TEMPLATE, OBSERVER_INSTRUCTION
@@ -178,6 +179,7 @@ Example:
         
         # コマンドテンプレートのプレースホルダーを実際のセッションIDで置換
         command_to_run = self.llm_command.format(session_id=llm_session_id)
+        command_to_run = os.path.expandvars(command_to_run) # Expand environment variables
 
         try:
             process = subprocess.run(

@@ -29,6 +29,26 @@ class GeminiCliAgent(BaseAgent):
             **kwargs # 残りのkwargsをBaseAgentに渡す
         )
 
+        # Parse llm_command to extract common arguments for session creation
+        self.parsed_llm_args = []
+        expanded_llm_command = os.path.expandvars(self.llm_command) # Expand environment variables
+        llm_command_parts = shlex.split(expanded_llm_command)
+        # Skip the 'gemini' command itself and placeholder arguments
+        i = 0
+        while i < len(llm_command_parts):
+            part = llm_command_parts[i]
+            if part == '-y' or part == '--yolo':
+                self.parsed_llm_args.append(part)
+            elif part == '--include-directories' or part == '-I':
+                self.parsed_llm_args.append(part)
+                if i + 1 < len(llm_command_parts) and not llm_command_parts[i+1].startswith('-'):
+                    self.parsed_llm_args.append(llm_command_parts[i+1])
+                    i += 1 # Consume the value
+            elif part == '--output-format' or part == '-o':
+                # This is typically only for _invoke_llm, but keep it in mind
+                pass # We don't want output-format for session creation
+            i += 1
+
         if self.working_dir:
             gemini_dir = os.path.join(self.working_dir, '.gemini')
             settings_path = os.path.join(gemini_dir, 'settings.json')
@@ -66,7 +86,8 @@ class GeminiCliAgent(BaseAgent):
         # 新しいセッションを開始するために、role_promptを使って簡単なコマンドを実行する
         try:
             # --resume を付けずにコマンドを実行し、新しいセッションを作成させる
-            init_command = f"gemini {shlex.quote(self.role_prompt)}"
+            # parsed_llm_args を init_command に含める
+            init_command = f"gemini {' '.join(self.parsed_llm_args)} {shlex.quote(self.role_prompt)}"
             subprocess.run(
                 init_command, shell=True, check=True,
                 capture_output=True, text=True, timeout=80,
