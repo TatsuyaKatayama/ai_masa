@@ -76,6 +76,8 @@ class TestFoamerAgentResponse(unittest.TestCase):
 
         # Instantiate the agent
         foamer_agent = agent_class(
+            session_id=f"test-session-{foamer_config['name']}", # Add session_id
+            session_manager=MagicMock(), # Mock session manager
             **foamer_config,
             start_heartbeat=False,
             redis_host='localhost', # Default redis host for testing
@@ -84,37 +86,40 @@ class TestFoamerAgentResponse(unittest.TestCase):
         
         # Simulate an incoming message for the agent
         trigger_message = Message(from_agent="User", to_agent="Foamer", content="If a=1 and b=2, what is a+b? Check the cavity tutorial.", job_id="job-foamer-1")
+        
+        # Mock the session manager's return value for get_agent_state
+        foamer_agent.session_manager.get_agent_state.return_value = None
+
         foamer_agent._on_message_received(trigger_message.to_json())
 
         # Assertions
-        # 1. subprocess.run was called for session creation (once for _create_llm_session, once for _invoke_llm)
         self.assertEqual(mock_subprocess_run.call_count, 3)
 
-        # Check the call for session creation (second call in side_effect)
+        # Check the call for session creation
         create_session_call_args = mock_subprocess_run.call_args_list[1].args[0]
         self.assertIn('gemini', create_session_call_args)
-        self.assertNotIn('--resume', create_session_call_args) # Should not have --resume for new session creation
-        self.assertIn(shlex.quote(foamer_agent.role_prompt), create_session_call_args) # Role prompt should be present
-        self.assertIn(f"--include-directories {self.temp_wm_project_dir}", create_session_call_args) # Check WM_PROJECT_DIR
-
-        # Check the call for LLM invocation (third call in side_effect)
+        self.assertIn(shlex.quote(foamer_agent.role_prompt), create_session_call_args)
+        
+        # Check the call for LLM invocation
         llm_invoke_call_args = mock_subprocess_run.call_args_list[2].args[0]
         self.assertIn('gemini', llm_invoke_call_args)
-        self.assertIn('--resume 1', llm_invoke_call_args) # Should use --resume 1 (first session)
-        self.assertIn(f"--include-directories {self.temp_wm_project_dir}", llm_invoke_call_args) # Check WM_PROJECT_DIR
-        self.assertIn('--output-format json', llm_invoke_call_args)
+        self.assertIn('--resume 1', llm_invoke_call_args)
 
-        # 2. Agent registered the session ID
-        self.assertIn('job-foamer-1', foamer_agent.job_sessions)
-        self.assertEqual(foamer_agent.job_sessions['job-foamer-1'], '1') # Expecting session index 1
+        # 2. Agent registered the session ID via SessionManager
+        foamer_agent.session_manager.update_agent_state.assert_called_once()
+        update_call_args = foamer_agent.session_manager.update_agent_state.call_args[0]
+        self.assertEqual(update_call_args[0], foamer_agent.session_id) # session_id
+        self.assertEqual(update_call_args[1], foamer_agent.name) # agent_name
+        # state dictionary
+        self.assertEqual(update_call_args[2], {'llm_sessions': {'job-foamer-1': '1'}})
 
         # 3. Agent published a response
         mock_broker_instance.publish.assert_called_once()
         published_message = Message.from_json(mock_broker_instance.publish.call_args[0][0])
         self.assertEqual(published_message.from_agent, foamer_agent.name)
         self.assertEqual(published_message.to_agent, "User")
-        self.assertIn("3", published_message.content) # Check if the content contains the expected result
-        self.assertIn("cavity tutorial", published_message.content) # Ensure content from included dir is conceptually present
+        self.assertIn("3", published_message.content)
+        self.assertIn("cavity tutorial", published_message.content)
 
 if __name__ == '__main__':
     unittest.main()

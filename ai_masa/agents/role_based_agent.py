@@ -1,3 +1,4 @@
+from typing import Optional, List, Dict, Any
 from .base_agent import BaseAgent
 
 class RoleBasedAgent(BaseAgent):
@@ -7,11 +8,21 @@ class RoleBasedAgent(BaseAgent):
     
     This class serves as a base for more specific role-based agents.
     """
-    def __init__(self, name="RoleBasedAgent", redis_host='localhost', user_lang='Japanese', role_prompt=None, **kwargs):
+    def __init__(self, name: str = "RoleBasedAgent", description: Optional[str] = None,
+                 user_lang: str = 'Japanese', session_id: str = "role_based_session",
+                 redis_host: str = 'localhost', redis_port: int = 6379, redis_db: int = 0,
+                 role_prompt: Optional[str] = None, **kwargs):
+        
+        final_description = description if description is not None else (role_prompt if role_prompt else "A role-based agent.")
+
         super().__init__(
             name=name,
-            redis_host=redis_host,
+            description=final_description,
             user_lang=user_lang,
-            description=role_prompt, # role_prompt is used as description for BaseAgent
+            session_id=session_id,
+            redis_host=redis_host,
+            redis_port=redis_port,
+            redis_db=redis_db,
             **kwargs
         )
+        self.role_prompt_content = role_prompt # Save role_prompt explicitly if needed later

@@ -2,7 +2,9 @@ import unittest
 import redis
 import uuid
 import json
-import time # For potential small delays if needed for Redis operations
+import time
+import subprocess
+import os
 
 from ai_masa.comms.session_manager import SessionManager
 
@@ -16,16 +18,43 @@ class TestSessionManager(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        """Set up a single SessionManager instance for all tests in this class."""
-        cls.sm = SessionManager(host=TEST_REDIS_HOST, port=TEST_REDIS_PORT, db=TEST_REDIS_DB)
-        # Ensure Redis is clean before any tests run
-        cls.sm.redis_client.flushdb()
+        """Starts the Redis container before any tests are run."""
+        print("\n[Session Manager Test] Starting Redis container...")
+        compose_file_path = os.path.join(os.path.dirname(__file__), '..', 'docker-compose.yml')
+        if not os.path.exists(compose_file_path):
+            raise FileNotFoundError(f"docker-compose.yml not found at {compose_file_path}")
+        
+        try:
+            subprocess.run(["docker", "compose", "-f", compose_file_path, "up", "-d"], check=True, capture_output=True)
+            cls.wait_for_redis()
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            print("Error starting Redis container. Is Docker running?", file=sys.stderr)
+            if hasattr(e, 'stderr'):
+                print(f"Stderr: {e.stderr.decode()}", file=sys.stderr)
+            raise
 
     @classmethod
     def tearDownClass(cls):
-        """Clean up Redis after all tests in this class have run."""
-        cls.sm.redis_client.flushdb()
-        cls.sm.redis_client.close()
+        """Stops the Redis container after all tests are done."""
+        print("\n[Session Manager Test] Stopping Redis container...")
+        compose_file_path = os.path.join(os.path.dirname(__file__), '..', 'docker-compose.yml')
+        subprocess.run(["docker", "compose", "-f", compose_file_path, "down"], capture_output=True)
+        if hasattr(cls, 'sm') and cls.sm.redis_client:
+            cls.sm.redis_client.close()
+
+    @classmethod
+    def wait_for_redis(cls, retries=10, delay=2):
+        """Waits for the Redis container to become available."""
+        for i in range(retries):
+            try:
+                r = redis.Redis(host=TEST_REDIS_HOST, port=TEST_REDIS_PORT, db=TEST_REDIS_DB)
+                if r.ping():
+                    print("[Session Manager Test] Redis is ready.")
+                    cls.sm = SessionManager(host=TEST_REDIS_HOST, port=TEST_REDIS_PORT, db=TEST_REDIS_DB)
+                    return
+            except redis.exceptions.ConnectionError:
+                time.sleep(delay)
+        raise ConnectionError("Could not connect to Redis container after multiple retries.")
 
     def setUp(self):
         """Initialize list to track session IDs for cleanup."""
