@@ -1,17 +1,29 @@
 from datetime import datetime, timedelta
+import argparse
 from ..models.message import Message
 from .listener_agent import ListenerAgent
 
 class KintaiAgent(ListenerAgent):
-    def __init__(self, name="KintaiAgent", description="An agent that tracks active agents via heartbeats.", **kwargs):
-        # `heartbeat_timeout` をkwargsから取り出し、super()に渡さないようにする
-        heartbeat_timeout_seconds = int(kwargs.pop('heartbeat_timeout', 30))
+    def __init__(self, name: str = "KintaiAgent", description: str = "An agent that tracks active agents via heartbeats.",
+                 user_lang: str = 'Japanese', session_id: str = "listener_session",
+                 redis_host: str = 'localhost', redis_port: int = 6379, redis_db: int = 0,
+                 heartbeat_timeout: int = 30, **kwargs):
+        
         # KintaiAgent自身はハートビートを送信しないため、start_heartbeat=Falseに設定
-        super().__init__(name, description, start_heartbeat=False, **kwargs)
+        super().__init__(
+            name=name,
+            description=description,
+            user_lang=user_lang,
+            session_id=session_id,
+            redis_host=redis_host,
+            redis_port=redis_port,
+            redis_db=redis_db,
+            start_heartbeat=False,
+            **kwargs # ListenerAgentに渡さない追加のkwargsはここで処理される
+        )
         
         self.active_agents = {}  # agent_name: last_heartbeat_timestamp
-        # タイムアウトは環境変数や引数で設定可能にするとより堅牢
-        self.heartbeat_timeout = timedelta(seconds=heartbeat_timeout_seconds)
+        self.heartbeat_timeout = timedelta(seconds=heartbeat_timeout)
 
     def _handle_message(self, msg: Message):
         """
@@ -20,11 +32,13 @@ class KintaiAgent(ListenerAgent):
         # ハートビートメッセージを内容とCCで判定
         if msg.content == 'heartbeat' and msg.cc_agents and '_broadcast_' in msg.cc_agents:
             self.active_agents[msg.from_agent] = datetime.now()
-            #  inactive agentのクリーンアップはハートビート受信時に行うのが効率的
+            # inactive agentのクリーンアップはハートビート受信時に行うのが効率的
             self._cleanup_inactive_agents()
             return
 
         # 自分宛のメッセージでなければ無視
+        # BaseAgentの_on_message_receivedで既にフィルタリングされているため、ここには自分宛のメッセージかCCメッセージのみが来る
+        # ListenerAgentの_handle_messageは自分宛のメッセージのみを処理する想定であれば、以下が必要
         if msg.to_agent != self.name:
             return
 
@@ -44,7 +58,9 @@ class KintaiAgent(ListenerAgent):
             del self.active_agents[agent]
 
     def _respond_to_status_query(self, trigger_msg: Message):
-        """Sends a list of currently active agents."""
+        """
+        Sends a list of currently active agents.
+        """
         self._cleanup_inactive_agents()  # Update list before responding
         
         # 自分自身もリストに含める
@@ -63,4 +79,18 @@ class KintaiAgent(ListenerAgent):
         )
 
 if __name__ == "__main__":
+    # ListenerAgent.main()を使用するため、ここでは追加の引数を定義するのみ
+    parser = argparse.ArgumentParser(description="Run a KintaiAgent.")
+    parser.add_argument("name", type=str, help="The name of the agent.")
+    parser.add_argument("description", type=str, nargs='?', 
+                        default="An agent that tracks active agents via heartbeats.", 
+                        help="Description of the agent.")
+    parser.add_argument("--user_lang", type=str, default="Japanese", help="Language for user interaction.")
+    parser.add_argument("--session_id", type=str, required=True, help="Session ID for the agent's history.")
+    parser.add_argument("--redis_host", type=str, default="localhost", help="Redis host.")
+    parser.add_argument("--redis_port", type=int, default=6379, help="Redis port.")
+    parser.add_argument("--redis_db", type=int, default=0, help="Redis DB.")
+    parser.add_argument("--heartbeat_timeout", type=int, default=30, help="Timeout in seconds for agent heartbeats.")
+
+    # ListenerAgent.mainに引数を渡し、そこでパースとエージェントの起動を行う
     ListenerAgent.main(KintaiAgent)

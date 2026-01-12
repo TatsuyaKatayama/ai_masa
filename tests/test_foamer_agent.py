@@ -1,15 +1,53 @@
-
 import unittest
 from unittest.mock import patch, MagicMock
 import subprocess
 import yaml
 import os
+import redis
+import time
 
 # Make sure to adjust the path to import the agent
 from ai_masa.agents.role_based_gemini_cli_agent import RoleBasedGeminiCliAgent
 from ai_masa.models.message import Message
 
 class TestFoamerAgent(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        """Starts the Redis container before any tests are run."""
+        print("\n[Foamer Test] Starting Redis container...")
+        compose_file_path = os.path.join(os.path.dirname(__file__), '..', 'docker-compose.yml')
+        if not os.path.exists(compose_file_path):
+            raise FileNotFoundError(f"docker-compose.yml not found at {compose_file_path}")
+        
+        try:
+            subprocess.run(["docker", "compose", "-f", compose_file_path, "up", "-d"], check=True, capture_output=True)
+            cls.wait_for_redis()
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            print("Error starting Redis container. Is Docker running?", file=sys.stderr)
+            if hasattr(e, 'stderr'):
+                print(f"Stderr: {e.stderr.decode()}", file=sys.stderr)
+            raise
+
+    @classmethod
+    def tearDownClass(cls):
+        """Stops the Redis container after all tests are done."""
+        print("\n[Foamer Test] Stopping Redis container...")
+        compose_file_path = os.path.join(os.path.dirname(__file__), '..', 'docker-compose.yml')
+        subprocess.run(["docker", "compose", "-f", compose_file_path, "down"], capture_output=True)
+
+    @classmethod
+    def wait_for_redis(cls, retries=10, delay=2):
+        """Waits for the Redis container to become available."""
+        for i in range(retries):
+            try:
+                r = redis.Redis(host='localhost', port=6379, db=1)
+                if r.ping():
+                    print("[Foamer Test] Redis is ready.")
+                    return
+            except redis.exceptions.ConnectionError:
+                time.sleep(delay)
+        raise ConnectionError("Could not connect to Redis container after multiple retries.")
 
     def setUp(self):
         # Load agent configuration from the default YAML for testing purposes.
@@ -23,74 +61,60 @@ class TestFoamerAgent(unittest.TestCase):
         
         self.foamer_config = self.config['foamer'].copy() # Use copy to avoid modifying class-level dict
         self.foamer_config['name'] = 'FoamerTestAgent' # Use a different name for testing to avoid conflicts
+        self.foamer_config['session_id'] = 'test-foamer-session' # Add session_id
+        self.foamer_config['redis_db'] = 1 # Use test DB
         # Remove the 'type' key as it's not expected by the agent's constructor
         if 'type' in self.foamer_config:
             del self.foamer_config['type']
 
-    @patch('ai_masa.comms.redis_broker.RedisBroker')
-    def test_foamer_initial_session_timeout(self, MockRedisBroker):
+        # Patch RedisBroker here, so it's mocked during agent instantiation in tearDown.
+        self.mock_broker_patcher = patch('ai_masa.comms.redis_broker.RedisBroker')
+        self.MockRedisBroker = self.mock_broker_patcher.start()
+
+        # Instantiate the agent, storing it for tearDown
+        self.agent = RoleBasedGeminiCliAgent(**self.foamer_config, start_heartbeat=False)
+        self.agent.shutdown_event.set() # Ensure heartbeats are not started
+
+
+    def tearDown(self):
+        """
+        Clean up by shutting down the agent and stopping all patchers.
+        """
+        # Ensure the agent is shut down cleanly
+        if hasattr(self, 'agent') and self.agent:
+            self.agent.shutdown()
+        self.mock_broker_patcher.stop()
+
+    @patch('subprocess.run')
+    def test_foamer_initial_session_timeout(self, mock_subprocess_run):
         """
         Tests if the foamer agent's initial session creation times out,
         as described in the problem.
         """
-        # Instantiate the agent with the loaded config
-        agent = RoleBasedGeminiCliAgent(**self.foamer_config)
-        agent.shutdown_event.set() # Prevent heartbeat threads
-
         # Mock subprocess.run to simulate a timeout on the specific command
         # that _create_llm_session in GeminiCliAgent runs.
-        original_subprocess_run = subprocess.run
-
-        def mock_subprocess_run(*args, **kwargs):
+        def mock_subprocess_run_side_effect(*args, **kwargs):
             command = args[0]
-            if "gemini --resume" in command and agent.description in command:
-                # This is the initial session creation command. Simulate a timeout.
+            if "gemini --list-sessions" in command:
+                return MagicMock(returncode=0, stdout="", stderr="No previous sessions found for this project.")
+            # If it's a gemini command but not list-sessions, it must be the init command.
+            if "gemini" in command:
                 raise subprocess.TimeoutExpired(cmd=command, timeout=80)
-            return original_subprocess_run(*args, **kwargs)
+            # Fallback for any other command
+            return MagicMock(returncode=0, stdout="", stderr="")
 
-        with patch('subprocess.run', side_effect=mock_subprocess_run) as mock_run:
-            # This call will trigger _create_llm_session
-            session_id = agent._create_llm_session(job_id="test_job_1")
+        mock_subprocess_run.side_effect = mock_subprocess_run_side_effect
 
-            # Assert that a session was NOT created due to the timeout
-            self.assertIsNone(session_id)
+        # This call will trigger _create_llm_session
+        session_id = self.agent._create_llm_session(job_id="test_job_1")
 
-            # Verify that subprocess.run was called with the expected command structure
-            self.assertTrue(any("gemini --resume" in call.args[0] for call in mock_run.call_args_list))
+        # Assert that a session was NOT created due to the timeout
+        self.assertIsNone(session_id)
 
-
-    @unittest.expectedFailure
-    @patch('ai_masa.comms.redis_broker.RedisBroker')
-    def test_foamer_initial_session_live(self, MockRedisBroker):
-        """
-        This is a live test that attempts to reproduce the timeout without mocking subprocess.
-        It may be slow and is expected to fail if the timeout issue exists.
-        This test is marked as 'expectedFailure' to indicate the bug.
-        """
-        # Instantiate the agent
-        agent = RoleBasedGeminiCliAgent(**self.foamer_config)
-        agent.shutdown_event.set() # Prevent heartbeat threads
-
-        # This call will trigger the actual subprocess command
-        # If the bug exists, this will hang and then time out (returning None).
-        # The original code has a timeout of 80 seconds.
-        # We can add a shorter timeout here for the test if needed, but for now
-        # we will rely on the agent's internal timeout.
-        
-        print(f"\n--- Running live test for {agent.name}. This may take over 80 seconds. ---")
-        
-        session_id = agent._create_llm_session(job_id="live_test_job")
-
-        # If the command times out as per GeminiCliAgent, session_id will be None.
-        if session_id is None:
-            print(f"--- Live test for {agent.name} correctly resulted in a timeout (session_id is None). ---")
-        else:
-            print(f"--- Live test for {agent.name} did NOT time out. Session ID: {session_id} ---")
-
-        # This assertion will fail if the timeout occurs, demonstrating the bug.
-        # To make the test pass when the bug is present, we'd assert IsNone.
-        self.assertIsNone(session_id, "Expected session creation to time out and return None, but it did not.")
-
+        # Verify that subprocess.run was called for list-sessions and the init command
+        self.assertEqual(mock_subprocess_run.call_count, 2)
+        self.assertTrue(any("gemini --list-sessions" in call.args[0] for call in mock_subprocess_run.call_args_list))
+        self.assertTrue(any("gemini" in call.args[0] and "list-sessions" not in call.args[0] for call in mock_subprocess_run.call_args_list))
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,61 +1,128 @@
 import unittest
 from unittest.mock import patch, MagicMock
+import json
+import subprocess
+
 from ai_masa.agents.role_based_gemini_cli_agent import RoleBasedGeminiCliAgent
 
 class TestRoleBasedGeminiCliAgent(unittest.TestCase):
 
-    @patch('subprocess.run') # Mock subprocess.run to prevent actual command execution
-    def test_instantiation_with_role_prompt(self, mock_subprocess_run):
-        """
-        Test that RoleBasedGeminiCliAgent can be instantiated with a role_prompt,
-        and that the prompt is correctly assigned and included in the agent's full role_prompt.
-        """
-        # Configure the mock to return a successful result for gemini --list-sessions etc.
-        mock_subprocess_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
+    def setUp(self):
+        """Set up mocks and agent instance for each test case."""
+        self.mock_broker_patcher = patch('ai_masa.agents.base_agent.RedisBroker')
+        self.mock_session_manager_patcher = patch('ai_masa.agents.base_agent.SessionManager')
+        self.mock_subprocess_patcher = patch('subprocess.run')
+        self.mock_base_agent_start_heartbeat_patcher = patch('ai_masa.agents.base_agent.BaseAgent._start_heartbeat')
 
-        agent_name = "TestRoleCliAgent"
-        role_prompt_text = "You are a test CLI agent."
+        self.MockRedisBroker = self.mock_broker_patcher.start()
+        self.MockSessionManager = self.mock_session_manager_patcher.start()
+        self.mock_subprocess_run = self.mock_subprocess_patcher.start()
+        self.mock_base_agent_start_heartbeat = self.mock_base_agent_start_heartbeat_patcher.start()
+
+        self.mock_broker_instance = self.MockRedisBroker.return_value
+        self.mock_session_manager_instance = self.MockSessionManager.return_value
         
-        # Instantiate the agent, ensuring start_heartbeat is False for tests
+        # subprocess.runのデフォルトの戻り値を設定
+        self.mock_subprocess_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
+
+    def tearDown(self):
+        """Stop all patchers."""
+        self.mock_broker_patcher.stop()
+        self.mock_session_manager_patcher.stop()
+        self.mock_subprocess_patcher.stop()
+        self.mock_base_agent_start_heartbeat_patcher.stop()
+
+    def test_instantiation_with_role_prompt(self):
+        """
+        Test that RoleBasedGeminiCliAgent can be instantiated with a role_prompt.
+        """
+        agent_name = "TestRoleCliAgent"
+        description_text = "A test CLI agent."
+        role_prompt_text = "You are a test CLI agent." # This will be stored but not used in the main prompt
+        session_id = f"project-{agent_name}"
+        
         agent = RoleBasedGeminiCliAgent(
             name=agent_name,
+            description=description_text,
             role_prompt=role_prompt_text,
+            session_id=session_id,
+            session_manager=self.mock_session_manager_instance,
             start_heartbeat=False
         )
         
-        # Check if the name is set correctly
         self.assertEqual(agent.name, agent_name)
-        
-        # Check if the original role_prompt_text is included in the full prompt
-        # (as BaseAgent modifies the description/role_prompt)
-        self.assertIn(role_prompt_text, agent.role_prompt)
-        
-        # Verify that the llm_command is set by GeminiCliAgent's init
-        self.assertIsNotNone(agent.llm_command)
+        self.assertEqual(agent.description, description_text) # description should be prioritized
+        self.assertEqual(agent.role_prompt_content, role_prompt_text)
+        self.assertIn(description_text, agent.role_prompt) # The final prompt should contain the description
+        self.assertNotIn(role_prompt_text, agent.role_prompt) # but not the role_prompt text
         self.assertIn("gemini", agent.llm_command)
+        self.assertEqual(agent.session_id, session_id)
 
-    @patch('subprocess.run') # Mock subprocess.run to prevent actual command execution
-    def test_instantiation_with_custom_llm_command(self, mock_subprocess_run):
+    def test_instantiation_with_custom_llm_command(self):
         """
-        Test that RoleBasedGeminiCliAgent can be instantiated with a custom llm_command,
-        and that the custom command is correctly assigned.
+        Test that RoleBasedGeminiCliAgent can be instantiated with a custom llm_command.
         """
-        mock_subprocess_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
-
         agent_name = "TestCustomLlmAgent"
+        description_text = "An agent with a custom LLM command."
         role_prompt_text = "You are an agent with a custom LLM command."
         custom_llm_command = "my_custom_llm_cli --model custom-model --param value"
+        session_id = f"project-{agent_name}"
         
         agent = RoleBasedGeminiCliAgent(
             name=agent_name,
+            description=description_text,
             role_prompt=role_prompt_text,
             llm_command=custom_llm_command,
+            session_id=session_id,
+            session_manager=self.mock_session_manager_instance,
             start_heartbeat=False
         )
 
         self.assertEqual(agent.name, agent_name)
-        self.assertIn(role_prompt_text, agent.role_prompt)
+        self.assertEqual(agent.description, description_text)
+        self.assertEqual(agent.role_prompt_content, role_prompt_text)
+        self.assertIn(description_text, agent.role_prompt)
+        self.assertNotIn(role_prompt_text, agent.role_prompt)
         self.assertEqual(agent.llm_command, custom_llm_command)
+        self.assertEqual(agent.session_id, session_id)
+
+    def test_instantiation_without_explicit_description_uses_role_prompt(self):
+        """
+        Test that if no explicit description is given, role_prompt is used as description.
+        """
+        agent_name = "TestRoleCliAgentNoDesc"
+        role_prompt_text = "Only role prompt provided."
+        session_id = f"project-{agent_name}"
+
+        agent = RoleBasedGeminiCliAgent(
+            name=agent_name,
+            role_prompt=role_prompt_text,
+            session_id=session_id,
+            session_manager=self.mock_session_manager_instance,
+            start_heartbeat=False
+        )
+
+        self.assertEqual(agent.description, role_prompt_text)
+        self.assertIn(role_prompt_text, agent.role_prompt)
+        self.assertEqual(agent.role_prompt_content, role_prompt_text)
+
+    def test_instantiation_without_any_description_or_role_prompt_uses_default(self):
+        """
+        Test that if neither description nor role_prompt is given, a default is used.
+        """
+        agent_name = "TestRoleCliAgentDefaultDesc"
+        session_id = f"project-{agent_name}"
+
+        agent = RoleBasedGeminiCliAgent(
+            name=agent_name,
+            session_id=session_id,
+            session_manager=self.mock_session_manager_instance,
+            start_heartbeat=False
+        )
+
+        self.assertEqual(agent.description, "A role-based Gemini CLI agent.")
+        self.assertIn("A role-based Gemini CLI agent.", agent.role_prompt)
+        self.assertIsNone(agent.role_prompt_content)
 
 if __name__ == '__main__':
     unittest.main()
