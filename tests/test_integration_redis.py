@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from ai_masa.agents.base_agent import BaseAgent
 from ai_masa.models.message import Message
-from ai_masa.comms.session_manager import SessionManager
+from ai_masa.comms.memory_manager import MemoryManager
 
 # Configuration for test Redis instance (must match docker-compose.yml)
 TEST_REDIS_HOST = 'localhost'
@@ -87,16 +87,16 @@ class TestBaseAgentIntegration(unittest.TestCase):
         """
         project_name = "integ-project"
         agent_name = "IntegAgent"
-        session_id = f"{project_name}-{agent_name}"
+        memory_id = f"{project_name}-{agent_name}"
         job_id = "job-integ-123"
 
         # Use the real SessionManager
-        session_manager = SessionManager(host=TEST_REDIS_HOST, port=TEST_REDIS_PORT, db=TEST_REDIS_DB)
+        memory_manager = MemoryManager(host=TEST_REDIS_HOST, port=TEST_REDIS_PORT, db=TEST_REDIS_DB)
 
         agent = BaseAgent(
             name=agent_name,
             description="An integration test agent.",
-            session_id=session_id,
+            memory_id=memory_id,
             redis_host=TEST_REDIS_HOST,
             redis_port=TEST_REDIS_PORT,
             redis_db=TEST_REDIS_DB,
@@ -121,12 +121,12 @@ class TestBaseAgentIntegration(unittest.TestCase):
         # Assert (Scenario 1) - Check Redis directly
         self.assertEqual(self.mock_subprocess_run.call_count, 2, "Expected LLM session creation and one LLM call.")
         
-        history = session_manager.get_history(session_id, agent_name)
+        history = memory_manager.get_history(memory_id, agent_name)
         self.assertEqual(len(history), 2)
         self.assertEqual(history[0]['content'], "Hello")
         self.assertEqual(history[1]['content'], "Hi there!")
 
-        agent_state = session_manager.get_agent_state(session_id, agent_name)
+        agent_state = memory_manager.get_agent_state(memory_id, agent_name)
         self.assertEqual(agent_state['llm_sessions'][job_id], 'llm-session-abc')
 
         # --- SCENARIO 2: Second message ---
@@ -146,7 +146,7 @@ class TestBaseAgentIntegration(unittest.TestCase):
         # Assert (Scenario 2)
         self.mock_subprocess_run.assert_called_once() # CRITICAL: No new LLM session was created
         
-        history = session_manager.get_history(session_id, agent_name)
+        history = memory_manager.get_history(memory_id, agent_name)
         self.assertEqual(len(history), 4) # 2 from previous, 2 from this turn
         self.assertEqual(history[2]['content'], "How are you?")
         self.assertEqual(history[3]['content'], "I am fine.")

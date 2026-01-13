@@ -50,7 +50,7 @@ class TestFoamerAgentResponse(unittest.TestCase):
 
     @patch('subprocess.run')
     @patch('ai_masa.agents.base_agent.RedisBroker')
-    def test_foamer_agent_session_and_response(self, MockRedisBroker, mock_subprocess_run):
+    def test_foamer_agent_memory_and_response(self, MockRedisBroker, mock_subprocess_run):
         mock_broker_instance = MockRedisBroker.return_value
 
         # Mock subprocess.run for session creation and LLM invocation
@@ -76,8 +76,8 @@ class TestFoamerAgentResponse(unittest.TestCase):
 
         # Instantiate the agent
         foamer_agent = agent_class(
-            session_id=f"test-session-{foamer_config['name']}", # Add session_id
-            session_manager=MagicMock(), # Mock session manager
+            memory_id=f"test-memory-{foamer_config['name']}", # Add memory_id
+            memory_manager=MagicMock(), # Mock memory manager
             **foamer_config,
             start_heartbeat=False,
             redis_host='localhost', # Default redis host for testing
@@ -87,8 +87,8 @@ class TestFoamerAgentResponse(unittest.TestCase):
         # Simulate an incoming message for the agent
         trigger_message = Message(from_agent="User", to_agent="Foamer", content="If a=1 and b=2, what is a+b? Check the cavity tutorial.", job_id="job-foamer-1")
         
-        # Mock the session manager's return value for get_agent_state
-        foamer_agent.session_manager.get_agent_state.return_value = None
+        # Mock the memory manager's return value for get_agent_state
+        foamer_agent.memory_manager.get_agent_state.return_value = None
 
         foamer_agent._on_message_received(trigger_message.to_json())
 
@@ -105,10 +105,10 @@ class TestFoamerAgentResponse(unittest.TestCase):
         self.assertIn('gemini', llm_invoke_call_args)
         self.assertIn('--resume 1', llm_invoke_call_args)
 
-        # 2. Agent registered the session ID via SessionManager
-        foamer_agent.session_manager.update_agent_state.assert_called_once()
-        update_call_args = foamer_agent.session_manager.update_agent_state.call_args[0]
-        self.assertEqual(update_call_args[0], foamer_agent.session_id) # session_id
+        # 2. Agent registered the memory ID via MemoryManager
+        foamer_agent.memory_manager.update_agent_state.assert_called_once()
+        update_call_args = foamer_agent.memory_manager.update_agent_state.call_args[0]
+        self.assertEqual(update_call_args[0], foamer_agent.memory_id) # memory_id
         self.assertEqual(update_call_args[1], foamer_agent.name) # agent_name
         # state dictionary
         self.assertEqual(update_call_args[2], {'llm_sessions': {'job-foamer-1': '1'}})

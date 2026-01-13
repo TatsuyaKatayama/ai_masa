@@ -9,7 +9,7 @@ class RoleBasedAgent(BaseAgent):
     This class serves as a base for more specific role-based agents.
     """
     def __init__(self, name: str = "RoleBasedAgent", description: Optional[str] = None,
-                 user_lang: str = 'Japanese', session_id: str = "role_based_session",
+                 user_lang: str = 'Japanese', memory_id: str = "role_based_memory",
                  redis_host: str = 'localhost', redis_port: int = 6379, redis_db: int = 0,
                  role_prompt: Optional[str] = None, **kwargs):
         
@@ -19,7 +19,7 @@ class RoleBasedAgent(BaseAgent):
             name=name,
             description=final_description,
             user_lang=user_lang,
-            session_id=session_id,
+            memory_id=memory_id,
             redis_host=redis_host,
             redis_port=redis_port,
             redis_db=redis_db,

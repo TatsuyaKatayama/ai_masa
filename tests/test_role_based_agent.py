@@ -8,20 +8,20 @@ class TestRoleBasedAgent(unittest.TestCase):
     def setUp(self):
         """Set up mocks and agent instance for each test case."""
         self.mock_broker_patcher = patch('ai_masa.agents.base_agent.RedisBroker')
-        self.mock_session_manager_patcher = patch('ai_masa.agents.base_agent.SessionManager')
+        self.mock_memory_manager_patcher = patch('ai_masa.agents.base_agent.MemoryManager')
         self.mock_base_agent_start_heartbeat_patcher = patch('ai_masa.agents.base_agent.BaseAgent._start_heartbeat')
 
         self.MockRedisBroker = self.mock_broker_patcher.start()
-        self.MockSessionManager = self.mock_session_manager_patcher.start()
+        self.MockMemoryManager = self.mock_memory_manager_patcher.start()
         self.mock_base_agent_start_heartbeat = self.mock_base_agent_start_heartbeat_patcher.start()
 
         self.mock_broker_instance = self.MockRedisBroker.return_value
-        self.mock_session_manager_instance = self.MockSessionManager.return_value
+        self.mock_memory_manager_instance = self.MockMemoryManager.return_value
 
     def tearDown(self):
         """Stop all patchers."""
         self.mock_broker_patcher.stop()
-        self.mock_session_manager_patcher.stop()
+        self.mock_memory_manager_patcher.stop()
         self.mock_base_agent_start_heartbeat_patcher.stop()
 
     def test_instantiation_with_role_prompt_and_description(self):
@@ -32,14 +32,14 @@ class TestRoleBasedAgent(unittest.TestCase):
         agent_name = "TestRoleAgent"
         description_text = "Specific description"
         role_prompt_text = "You are a test agent."
-        session_id = "project-TestRoleAgent"
+        memory_id = "project-TestRoleAgent"
         
         agent = RoleBasedAgent(
             name=agent_name,
             description=description_text,
             role_prompt=role_prompt_text,
-            session_id=session_id,
-            session_manager=self.mock_session_manager_instance
+            memory_id=memory_id,
+            memory_manager=self.mock_memory_manager_instance
         )
         
         self.assertEqual(agent.name, agent_name)
@@ -61,13 +61,13 @@ class TestRoleBasedAgent(unittest.TestCase):
         """
         agent_name = "TestRoleAgent2"
         role_prompt_text = "Another test role."
-        session_id = "project-TestRoleAgent2"
+        memory_id = "project-TestRoleAgent2"
 
         agent = RoleBasedAgent(
             name=agent_name,
             role_prompt=role_prompt_text,
-            session_id=session_id,
-            session_manager=self.mock_session_manager_instance
+            memory_id=memory_id,
+            memory_manager=self.mock_memory_manager_instance
         )
 
         self.assertEqual(agent.description, role_prompt_text)
@@ -78,12 +78,12 @@ class TestRoleBasedAgent(unittest.TestCase):
         Test that if neither description nor role_prompt is given, a default description is used.
         """
         agent_name = "TestRoleAgent3"
-        session_id = "project-TestRoleAgent3"
+        memory_id = "project-TestRoleAgent3"
 
         agent = RoleBasedAgent(
             name=agent_name,
-            session_id=session_id,
-            session_manager=self.mock_session_manager_instance
+            memory_id=memory_id,
+            memory_manager=self.mock_memory_manager_instance
         )
 
         self.assertEqual(agent.description, "A role-based agent.")

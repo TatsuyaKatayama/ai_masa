@@ -8,8 +8,8 @@ from ai_masa.models.message import Message
 
 # ListenerAgentを継承するダミークラスを定義
 class ConcreteListenerAgent(ListenerAgent):
-    def __init__(self, name, description, session_id, **kwargs):
-        super().__init__(name, description, session_id=session_id, **kwargs)
+    def __init__(self, name, description, memory_id, **kwargs):
+        super().__init__(name, description, memory_id=memory_id, **kwargs)
         self.handled_messages = []
 
     def think_and_respond(self, trigger_msg: Message, job_id: str, is_observer: bool = False):
@@ -19,26 +19,26 @@ class TestListenerAgent(unittest.TestCase):
 
     def setUp(self):
         self.mock_broker_patcher = patch('ai_masa.agents.base_agent.RedisBroker')
-        self.mock_session_manager_patcher = patch('ai_masa.agents.base_agent.SessionManager')
+        self.mock_memory_manager_patcher = patch('ai_masa.agents.base_agent.MemoryManager')
         self.mock_base_agent_start_heartbeat_patcher = patch('ai_masa.agents.base_agent.BaseAgent._start_heartbeat')
 
         self.MockRedisBroker = self.mock_broker_patcher.start()
-        self.MockSessionManager = self.mock_session_manager_patcher.start()
+        self.MockMemoryManager = self.mock_memory_manager_patcher.start()
         self.mock_base_agent_start_heartbeat = self.mock_base_agent_start_heartbeat_patcher.start()
 
         self.mock_broker_instance = self.MockRedisBroker.return_value
-        self.mock_session_manager_instance = self.MockSessionManager.return_value
+        self.mock_memory_manager_instance = self.MockMemoryManager.return_value
 
         self.agent = ConcreteListenerAgent(
             name="TestListener",
             description="A test listener agent.",
-            session_id="project-TestListener",
-            session_manager=self.mock_session_manager_instance
+            memory_id="project-TestListener",
+            memory_manager=self.mock_memory_manager_instance
         )
 
     def tearDown(self):
         self.mock_broker_patcher.stop()
-        self.mock_session_manager_patcher.stop()
+        self.mock_memory_manager_patcher.stop()
         self.mock_base_agent_start_heartbeat_patcher.stop()
 
     def test_on_message_received_calls_think_and_respond(self):
@@ -53,8 +53,8 @@ class TestListenerAgent(unittest.TestCase):
             # think_and_respondが呼ばれたことを確認
             mock_think.assert_called_once()
             
-            # SessionManagerにメッセージが追加されたことを確認
-            self.mock_session_manager_instance.add_message.assert_called_once_with("project-TestListener", json.loads(trigger_message))
+            # MemoryManagerにメッセージが追加されたことを確認
+            self.mock_memory_manager_instance.add_message.assert_called_once_with("project-TestListener", json.loads(trigger_message))
 
             # メッセージが処理されたことを確認
             self.assertEqual(len(self.agent.handled_messages), 1)
@@ -67,7 +67,7 @@ class TestListenerAgent(unittest.TestCase):
         own_message = Message("TestListener", "User", "My message", job_id="job-2").to_json()
         self.agent._on_message_received(own_message)
         
-        self.mock_session_manager_instance.add_message.assert_not_called()
+        self.mock_memory_manager_instance.add_message.assert_not_called()
         self.assertEqual(len(self.agent.handled_messages), 0)
 
     def test_on_message_received_ignores_heartbeats(self):
@@ -78,7 +78,7 @@ class TestListenerAgent(unittest.TestCase):
         with patch.object(self.agent, 'think_and_respond') as mock_think:
             self.agent._on_message_received(heartbeat_msg)
             
-            self.mock_session_manager_instance.add_message.assert_called_once()
+            self.mock_memory_manager_instance.add_message.assert_called_once()
             # think_and_respondは呼ばれない
             mock_think.assert_not_called()
             self.assertEqual(len(self.agent.handled_messages), 0)

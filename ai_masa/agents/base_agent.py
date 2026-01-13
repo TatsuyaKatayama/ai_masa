@@ -9,12 +9,12 @@ from typing import Optional, List, Dict, Any
 
 from ..models.message import Message
 from ..comms.redis_broker import RedisBroker
-from ..comms.session_manager import SessionManager
+from ..comms.memory_manager import MemoryManager
 from ..models.prompts import JSON_FORMAT_EXAMPLE, PROMPT_TEMPLATE, OBSERVER_INSTRUCTION
 
 class BaseAgent:
     def __init__(self, name: str, description: str, user_lang: str = 'Japanese',
-                 session_id: Optional[str] = None, session_manager: Optional[SessionManager] = None,
+                 memory_id: Optional[str] = None, memory_manager: Optional[MemoryManager] = None,
                  redis_host: str = 'localhost', redis_port: int = 6379, redis_db: int = 0,
                  llm_command: str = "echo '{\"to_agent\": \"dummy\", \"content\": \"dummy response\"}'",
                  llm_session_create_command: str = "echo 'new_session_id'",
@@ -28,16 +28,16 @@ class BaseAgent:
         self.llm_session_create_command = llm_session_create_command
         self.working_dir = working_dir
 
-        if not session_id:
-            raise ValueError("session_id must be provided for BaseAgent in individual session model.")
-        self.session_id = session_id
+        if not memory_id:
+            raise ValueError("memory_id must be provided for BaseAgent in individual memory model.")
+        self.memory_id = memory_id
         
-        if session_manager:
-            self.session_manager = session_manager
+        if memory_manager:
+            self.memory_manager = memory_manager
         else:
-            self.session_manager = SessionManager(host=redis_host, port=redis_port, db=redis_db)
+            self.memory_manager = MemoryManager(host=redis_host, port=redis_port, db=redis_db)
         
-        print(f"[{self.name}] Using session ID: {self.session_id}")
+        print(f"[{self.name}] Using memory ID: {self.memory_id}")
         
         self.broker = RedisBroker(host=redis_host, port=redis_port, db=redis_db)
         self.broker.connect()
@@ -101,7 +101,7 @@ Example:
             # Save relevant message to my own history
             # Don't save my own sent messages here, it is handled in broadcast()
             if msg.from_agent != self.name:
-                self.session_manager.add_message(self.session_id, json.loads(message_json))
+                self.memory_manager.add_message(self.memory_id, json.loads(message_json))
 
             # Ignore heartbeat for console logging and response logic
             if msg.content == "heartbeat" and job_id == "_system_":
@@ -118,7 +118,7 @@ Example:
             print(f"[{self.name}] Error in _on_message_received: {e}")
 
     def think_and_respond(self, trigger_msg: Message, job_id: str, is_observer: bool = False):
-        agent_state = self.session_manager.get_agent_state(self.session_id, self.name) or {}
+        agent_state = self.memory_manager.get_agent_state(self.memory_id, self.name) or {}
         llm_sessions = agent_state.get("llm_sessions", {})
         llm_session_id = llm_sessions.get(job_id)
         
@@ -131,7 +131,7 @@ Example:
             
             llm_sessions[job_id] = llm_session_id
             agent_state["llm_sessions"] = llm_sessions
-            self.session_manager.update_agent_state(self.session_id, self.name, agent_state)
+            self.memory_manager.update_agent_state(self.memory_id, self.name, agent_state)
             print(f"[{self.name}][{job_id}] New LLM session created: {llm_session_id}")
 
         prompt = self._build_prompt(trigger_msg, job_id, is_observer)
@@ -174,7 +174,7 @@ Example:
 
     def _build_prompt(self, trigger_msg: Message, job_id: str, is_observer: bool = False) -> str:
         # Get all history relevant to this agent from its session
-        full_history_list = self.session_manager.get_history(self.session_id, self.name) or []
+        full_history_list = self.memory_manager.get_history(self.memory_id, self.name) or []
         
         # CRITICAL: Filter history by the current job_id
         history_for_job = [msg for msg in full_history_list if msg.get("job_id") == job_id]
@@ -231,7 +231,7 @@ Example:
         msg_json = msg.to_json()
         
         # Save my own message to my history before sending
-        self.session_manager.add_message(self.session_id, json.loads(msg_json))
+        self.memory_manager.add_message(self.memory_id, json.loads(msg_json))
         
         # Publish to all agents
         self.broker.publish(msg_json)
@@ -244,7 +244,7 @@ if __name__ == "__main__":
     parser.add_argument("name", type=str, help="Name of the agent")
     parser.add_argument("description", type=str, help="Description of the agent")
     parser.add_argument("--user_lang", type=str, default="Japanese", help="Language for user interaction")
-    parser.add_argument("--session_id", type=str, required=True, help="Session ID for the agent's history")
+    parser.add_argument("--memory_id", type=str, required=True, help="Memory ID for the agent's history")
     parser.add_argument("--redis_host", type=str, default="localhost", help="Redis host")
     parser.add_argument("--redis_port", type=int, default=6379, help="Redis port")
     parser.add_argument("--redis_db", type=int, default=0, help="Redis DB")
@@ -257,7 +257,7 @@ if __name__ == "__main__":
         name=args.name,
         description=args.description,
         user_lang=args.user_lang,
-        session_id=args.session_id,
+        memory_id=args.memory_id,
         redis_host=args.redis_host,
         redis_port=args.redis_port,
         redis_db=args.redis_db,

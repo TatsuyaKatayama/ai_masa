@@ -11,12 +11,12 @@ class AgentManager(BaseAgent):
     他のエージェントの生存を監視し、状態を報告するエージェント。
     """
     def __init__(self, name: str = "AgentManager", description: str = "I am an agent manager, monitoring the status of other agents.",
-                 session_id: str = "_system_manager_session_", redis_host: str = 'localhost', redis_port: int = 6379, redis_db: int = 0,
+                 memory_id: str = "_system_manager_memory_", redis_host: str = 'localhost', redis_port: int = 6379, redis_db: int = 0,
                  timeout_seconds: int = 60, **kwargs):
         super().__init__(
             name=name,
             description=description,
-            session_id=session_id,
+            memory_id=memory_id,
             redis_host=redis_host,
             redis_port=redis_port,
             redis_db=redis_db,
@@ -122,7 +122,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the AgentManager.")
     parser.add_argument("name", type=str, nargs='?', default="AgentManager", help="Name of the agent (default: AgentManager)")
     parser.add_argument("--description", type=str, default="I am an agent manager, monitoring the status of other agents.", help="Description of the agent")
-    parser.add_argument("--session_id", type=str, default="_system_manager_session_", help="Session ID for the agent's history")
+    parser.add_argument("--memory_id", type=str, default="_system_manager_memory_", help="Memory ID for the agent's history")
     parser.add_argument("--redis_host", type=str, default="localhost", help="Redis host")
     parser.add_argument("--redis_port", type=int, default=6379, help="Redis port")
     parser.add_argument("--redis_db", type=int, default=0, help="Redis DB")
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     agent = AgentManager(
         name=args.name,
         description=args.description,
-        session_id=args.session_id,
+        memory_id=args.memory_id,
         redis_host=args.redis_host,
         redis_port=args.redis_port,
         redis_db=args.redis_db,

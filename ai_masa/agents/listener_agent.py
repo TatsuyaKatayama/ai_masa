@@ -12,13 +12,13 @@ class ListenerAgent(BaseAgent):
     It handles common setup and teardown logic.
     """
     def __init__(self, name: str, description: str, user_lang: str = 'Japanese',
-                 session_id: str = "listener_session", redis_host: str = 'localhost', redis_port: int = 6379, redis_db: int = 0,
+                 memory_id: str = "listener_memory", redis_host: str = 'localhost', redis_port: int = 6379, redis_db: int = 0,
                  start_heartbeat: bool = False, **kwargs):
         super().__init__(
             name=name,
             description=description,
             user_lang=user_lang,
-            session_id=session_id,
+            memory_id=memory_id,
             redis_host=redis_host,
             redis_port=redis_port,
             redis_db=redis_db,
@@ -65,7 +65,7 @@ class ListenerAgent(BaseAgent):
                             default=f"A {agent_class.__name__} agent.", 
                             help="Description of the agent.")
         parser.add_argument("--user_lang", type=str, default="Japanese", help="Language for user interaction.")
-        parser.add_argument("--session_id", type=str, required=True, help="Session ID for the agent's history.")
+        parser.add_argument("--memory_id", type=str, required=True, help="Memory ID for the agent's history.")
         parser.add_argument("--redis_host", type=str, default="localhost", help="Redis host.")
         parser.add_argument("--redis_port", type=int, default=6379, help="Redis port.")
         parser.add_argument("--redis_db", type=int, default=0, help="Redis DB.")
@@ -89,7 +89,7 @@ class ListenerAgent(BaseAgent):
             name=args.name,
             description=args.description,
             user_lang=args.user_lang,
-            session_id=args.session_id,
+            memory_id=args.memory_id,
             redis_host=args.redis_host,
             redis_port=args.redis_port,
             redis_db=args.redis_db,

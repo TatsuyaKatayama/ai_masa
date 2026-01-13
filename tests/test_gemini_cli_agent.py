@@ -15,27 +15,27 @@ class TestGeminiCliAgent(unittest.TestCase):
     def setUp(self):
         """Set up mocks and agent instance for each test case."""
         self.mock_broker_patcher = patch('ai_masa.agents.base_agent.RedisBroker')
-        self.mock_session_manager_patcher = patch('ai_masa.agents.base_agent.SessionManager')
+        self.mock_memory_manager_patcher = patch('ai_masa.agents.base_agent.MemoryManager')
         self.mock_subprocess_patcher = patch('subprocess.run')
         self.mock_base_agent_start_heartbeat_patcher = patch('ai_masa.agents.base_agent.BaseAgent._start_heartbeat')
 
         self.MockRedisBroker = self.mock_broker_patcher.start()
-        self.MockSessionManager = self.mock_session_manager_patcher.start()
+        self.MockMemoryManager = self.mock_memory_manager_patcher.start()
         self.mock_subprocess_run = self.mock_subprocess_patcher.start()
         self.mock_base_agent_start_heartbeat = self.mock_base_agent_start_heartbeat_patcher.start()
 
         self.mock_broker_instance = self.MockRedisBroker.return_value
-        self.mock_session_manager_instance = self.MockSessionManager.return_value
+        self.mock_memory_manager_instance = self.MockMemoryManager.return_value
 
         self.agent_name = "TestGeminiAgent"
-        self.session_id = f"project-{self.agent_name}"
+        self.memory_id = f"project-{self.agent_name}"
         self.description = "You are an intelligent AI assistant equipped with the Gemini CLI."
 
         self.agent = GeminiCliAgent(
             name=self.agent_name,
             description=self.description,
-            session_id=self.session_id,
-            session_manager=self.mock_session_manager_instance,
+            memory_id=self.memory_id,
+            memory_manager=self.mock_memory_manager_instance,
             llm_command="gemini --resume {session_id} --output-format json",
             # _create_llm_session method is overridden, so this value is not directly used for session creation
             llm_session_create_command="echo 'new_llm_session_id'", 
@@ -45,7 +45,7 @@ class TestGeminiCliAgent(unittest.TestCase):
     def tearDown(self):
         """Stop all patchers."""
         self.mock_broker_patcher.stop()
-        self.mock_session_manager_patcher.stop()
+        self.mock_memory_manager_patcher.stop()
         self.mock_subprocess_patcher.stop()
         self.mock_base_agent_start_heartbeat_patcher.stop()
 
@@ -57,7 +57,7 @@ class TestGeminiCliAgent(unittest.TestCase):
         self.assertEqual(self.agent.description, self.description)
         self.assertEqual(self.agent.llm_command, "gemini --resume {session_id} --output-format json")
         self.assertIn("--output-format json", self.agent.llm_command) # Should be part of actual llm_command
-        self.assertEqual(self.agent.session_id, self.session_id)
+        self.assertEqual(self.agent.memory_id, self.memory_id)
 
     def test_create_llm_session_generates_new_session_index(self):
         """
@@ -84,7 +84,7 @@ class TestGeminiCliAgent(unittest.TestCase):
         job_id = "job-create-next"
         # Mock gemini --list-sessions to return existing sessions in the expected format (e.g., "1. ...")
         self.mock_subprocess_run.side_effect = [
-            subprocess.CompletedProcess(args=["gemini", "--list-sessions"], returncode=0, stdout="1. Session A\n2. Session B", stderr=""),
+            subprocess.CompletedProcess(args=["gemini", "--list-sessions"], returncode=0, stdout="1. Memory A\n2. Memory B", stderr=""),
             subprocess.CompletedProcess(args=unittest.mock.ANY, returncode=0, stdout="", stderr="") # For initial prompt call
         ]
         
@@ -102,8 +102,8 @@ class TestGeminiCliAgent(unittest.TestCase):
         llm_response_content = {"to_agent": "User", "content": "The answer is 2."}
         llm_response_json = json.dumps(llm_response_content)
 
-        self.mock_session_manager_instance.get_agent_state.return_value = None
-        self.mock_session_manager_instance.get_history.return_value = []
+        self.mock_memory_manager_instance.get_agent_state.return_value = None
+        self.mock_memory_manager_instance.get_history.return_value = []
 
         self.mock_subprocess_run.side_effect = [
             subprocess.CompletedProcess(args=["gemini", "--list-sessions"], returncode=0, stdout="No sessions found.", stderr=""), # _create_llm_session list
@@ -114,10 +114,10 @@ class TestGeminiCliAgent(unittest.TestCase):
         self.agent._on_message_received(trigger_message_json)
 
         self.assertEqual(self.mock_subprocess_run.call_count, 3) # list-sessions, init prompt, invoke LLM
-        self.mock_session_manager_instance.update_agent_state.assert_called_once()
+        self.mock_memory_manager_instance.update_agent_state.assert_called_once()
         
         # Verify history saved for incoming and outgoing messages
-        self.assertEqual(self.mock_session_manager_instance.add_message.call_count, 2)
+        self.assertEqual(self.mock_memory_manager_instance.add_message.call_count, 2)
         self.mock_broker_instance.publish.assert_called_once()
         published_msg = json.loads(self.mock_broker_instance.publish.call_args[0][0])
         self.assertEqual(published_msg['content'], "The answer is 2.")
@@ -135,8 +135,8 @@ class TestGeminiCliAgent(unittest.TestCase):
         existing_llm_session_id = "existing-llm-session-abc"
         existing_agent_state = {"llm_sessions": {job_id: existing_llm_session_id}}
 
-        self.mock_session_manager_instance.get_agent_state.return_value = existing_agent_state
-        self.mock_session_manager_instance.get_history.return_value = [
+        self.mock_memory_manager_instance.get_agent_state.return_value = existing_agent_state
+        self.mock_memory_manager_instance.get_history.return_value = [
             {"from_agent": "User", "to_agent": self.agent_name, "content": "What is 1+1?", "job_id": job_id},
             {"from_agent": self.agent_name, "to_agent": "User", "content": "The answer is 2.", "job_id": job_id}
         ]
@@ -145,15 +145,15 @@ class TestGeminiCliAgent(unittest.TestCase):
 
         self.agent._on_message_received(trigger_message_json)
 
-        self.mock_session_manager_instance.get_agent_state.assert_called_once_with(self.session_id, self.agent_name)
-        self.mock_session_manager_instance.update_agent_state.assert_not_called() # No new LLM session created
+        self.mock_memory_manager_instance.get_agent_state.assert_called_once_with(self.memory_id, self.agent_name)
+        self.mock_memory_manager_instance.update_agent_state.assert_not_called() # No new LLM session created
         self.assertEqual(self.mock_subprocess_run.call_count, 1) # Only _invoke_llm called
         self.assertIn(f"gemini --resume {existing_llm_session_id}", self.mock_subprocess_run.call_args[0][0])
 
         # Verify history saved for incoming and outgoing messages
         # It was called for the incoming message by BaseAgent's _on_message_received,
         # and for the outgoing message by BaseAgent's broadcast.
-        self.assertEqual(self.mock_session_manager_instance.add_message.call_count, 2)
+        self.assertEqual(self.mock_memory_manager_instance.add_message.call_count, 2)
         self.mock_broker_instance.publish.assert_called_once()
 
     def test_gemini_config_file_creation(self):
@@ -165,8 +165,8 @@ class TestGeminiCliAgent(unittest.TestCase):
             agent = GeminiCliAgent(
                 name="TempGeminiAgent",
                 description="Temp agent.",
-                session_id="project-TempGeminiAgent",
-                session_manager=self.mock_session_manager_instance,
+                memory_id="project-TempGeminiAgent",
+                memory_manager=self.mock_memory_manager_instance,
                 working_dir=tmpdir,
                 start_heartbeat=False
             )
@@ -187,8 +187,8 @@ class TestGeminiCliAgent(unittest.TestCase):
             agent = GeminiCliAgent(
                 name="TempGeminiAgent2",
                 description="Temp agent.",
-                session_id="project-TempGeminiAgent2",
-                session_manager=self.mock_session_manager_instance,
+                memory_id="project-TempGeminiAgent2",
+                memory_manager=self.mock_memory_manager_instance,
                 working_dir=tmpdir,
                 start_heartbeat=False
             )

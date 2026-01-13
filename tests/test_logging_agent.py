@@ -12,29 +12,29 @@ class TestLoggingAgent(unittest.TestCase):
     def setUp(self):
         """Set up mocks and agent instance for each test case."""
         self.mock_broker_patcher = patch('ai_masa.agents.base_agent.RedisBroker')
-        self.mock_session_manager_patcher = patch('ai_masa.agents.base_agent.SessionManager')
+        self.mock_memory_manager_patcher = patch('ai_masa.agents.base_agent.MemoryManager')
         self.mock_base_agent_start_heartbeat_patcher = patch('ai_masa.agents.base_agent.BaseAgent._start_heartbeat')
         self.mock_stdout_patcher = patch('sys.stdout', new_callable=StringIO)
 
         self.MockRedisBroker = self.mock_broker_patcher.start()
-        self.MockSessionManager = self.mock_session_manager_patcher.start()
+        self.MockMemoryManager = self.mock_memory_manager_patcher.start()
         self.mock_base_agent_start_heartbeat = self.mock_base_agent_start_heartbeat_patcher.start()
         self.mock_stdout = self.mock_stdout_patcher.start()
 
         self.mock_broker_instance = self.MockRedisBroker.return_value
-        self.mock_session_manager_instance = self.MockSessionManager.return_value
+        self.mock_memory_manager_instance = self.MockMemoryManager.return_value
 
         self.agent = LoggingAgent(
             name="TestLogger",
             description="An agent that logs all messages.",
-            session_id="project-TestLogger", # 必須となったsession_idを渡す
-            session_manager=self.mock_session_manager_instance # モックを渡す
+            memory_id="project-TestLogger", # 必須となったmemory_idを渡す
+            memory_manager=self.mock_memory_manager_instance # モックを渡す
         )
 
     def tearDown(self):
         """Stop all patchers."""
         self.mock_broker_patcher.stop()
-        self.mock_session_manager_patcher.stop()
+        self.mock_memory_manager_patcher.stop()
         self.mock_base_agent_start_heartbeat_patcher.stop()
         self.mock_stdout_patcher.stop()
         sys.stdout = sys.__stdout__ # stdoutを元に戻す
@@ -63,8 +63,8 @@ class TestLoggingAgent(unittest.TestCase):
         expected_log = "[2025-01-01 12:00:00][job-123] AgentA -> AgentB: Hello World\n"
         self.assertEqual(output, expected_log) # Use assertEqual for exact match
 
-        # Message is not for the logger, so it should not be added to its session history
-        self.mock_session_manager_instance.add_message.assert_not_called()
+        # Message is not for the logger, so it should not be added to its memory history
+        self.mock_memory_manager_instance.add_message.assert_not_called()
 
 
     @patch('ai_masa.agents.logging_agent.datetime')
@@ -93,7 +93,7 @@ class TestLoggingAgent(unittest.TestCase):
         self.assertEqual(output, expected_log) # Use assertEqual for exact match
         
         # BaseAgentのロジックにより、CCされたメッセージは履歴に追加される
-        self.mock_session_manager_instance.add_message.assert_called_once()
+        self.mock_memory_manager_instance.add_message.assert_called_once()
 
     def test_ignores_heartbeat_message(self):
         """
@@ -118,7 +118,7 @@ class TestLoggingAgent(unittest.TestCase):
         self.assertEqual(output.strip(), "")
         
         # BaseAgentのロジックにより、CCされたメッセージは履歴に追加される
-        self.mock_session_manager_instance.add_message.assert_called_once()
+        self.mock_memory_manager_instance.add_message.assert_called_once()
 
 
 if __name__ == '__main__':

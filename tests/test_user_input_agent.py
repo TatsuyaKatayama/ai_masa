@@ -17,15 +17,15 @@ class TestUserInputAgent(unittest.TestCase):
 
         # 依存関係をモック化
         self.mock_broker_patcher = patch('ai_masa.agents.base_agent.RedisBroker')
-        self.mock_session_manager_patcher = patch('ai_masa.agents.base_agent.SessionManager')
+        self.mock_memory_manager_patcher = patch('ai_masa.agents.base_agent.MemoryManager')
         self.mock_base_agent_start_heartbeat_patcher = patch('ai_masa.agents.base_agent.BaseAgent._start_heartbeat')
 
         self.MockRedisBroker = self.mock_broker_patcher.start()
-        self.MockSessionManager = self.mock_session_manager_patcher.start()
+        self.MockMemoryManager = self.mock_memory_manager_patcher.start()
         self.mock_base_agent_start_heartbeat = self.mock_base_agent_start_heartbeat_patcher.start()
 
         self.mock_broker_instance = self.MockRedisBroker.return_value
-        self.mock_session_manager_instance = self.MockSessionManager.return_value
+        self.mock_memory_manager_instance = self.MockMemoryManager.return_value
 
         # 標準入力と出力をモック
         self.mock_stdin = StringIO()
@@ -37,12 +37,12 @@ class TestUserInputAgent(unittest.TestCase):
         self.agent = UserInputAgent(
             name="TestUser",
             description="Handles user input for testing.", # descriptionを追加
-            session_id="project-TestUser", # session_idを追加
-            session_manager=self.mock_session_manager_instance, # モックを渡す
+            memory_id="project-TestUser", # memory_idを追加
+            memory_manager=self.mock_memory_manager_instance, # モックを渡す
             default_target_agent="TestTarget"
         )
         # BaseAgentのbroadcastメソッドをモックして、呼び出しを検証できるようにする
-        # BaseAgentのbroadcastはSessionManager.add_messageも呼ぶので、それを検証する
+        # BaseAgentのbroadcastはMemoryManager.add_messageも呼ぶので、それを検証する
         self.agent.broadcast = MagicMock(side_effect=self.agent.broadcast) # 元のbroadcastも実行させる
         
         self.mock_broker_instance.connect.assert_called_once() # connectが呼ばれることを確認
@@ -50,7 +50,7 @@ class TestUserInputAgent(unittest.TestCase):
     def tearDown(self):
         """各テストの後に実行されるクリーンアップ"""
         self.mock_broker_patcher.stop()
-        self.mock_session_manager_patcher.stop()
+        self.mock_memory_manager_patcher.stop()
         self.mock_base_agent_start_heartbeat_patcher.stop()
         self.start_interaction_patcher.stop()
         sys.stdin = sys.__stdin__
@@ -60,7 +60,7 @@ class TestUserInputAgent(unittest.TestCase):
         """エージェントが正しく初期化されるかテスト"""
         self.assertEqual(self.agent.name, "TestUser")
         self.assertEqual(self.agent.description, "Handles user input for testing.")
-        self.assertEqual(self.agent.session_id, "project-TestUser")
+        self.assertEqual(self.agent.memory_id, "project-TestUser")
         self.assertEqual(self.agent.default_target_agent, "TestTarget")
         output = self.mock_stdout.getvalue()
         self.assertIn("[TestUser] Initialized. I will send messages to 'TestTarget'.", output)
@@ -88,10 +88,10 @@ class TestUserInputAgent(unittest.TestCase):
                 job_id="test-job-id-123"
             )
             
-            # broadcast内で自身のメッセージがSessionManagerに保存されることを検証
+            # broadcast内で自身のメッセージがMemoryManagerに保存されることを検証
             # broadcastのside_effectを設定しているので、add_messageが呼ばれる
-            self.mock_session_manager_instance.add_message.assert_called_once()
-            saved_message = self.mock_session_manager_instance.add_message.call_args[0][1]
+            self.mock_memory_manager_instance.add_message.assert_called_once()
+            saved_message = self.mock_memory_manager_instance.add_message.call_args[0][1]
             self.assertEqual(saved_message['content'], "Hello Agent!")
             self.assertEqual(saved_message['from_agent'], "TestUser")
             self.assertEqual(saved_message['to_agent'], "TestTarget")
@@ -125,8 +125,8 @@ class TestUserInputAgent(unittest.TestCase):
         # イベントがセットされたことを確認
         self.assertTrue(self.agent.response_received_event.is_set())
 
-        # 受信メッセージがSessionManagerに保存されることを検証
-        self.mock_session_manager_instance.add_message.assert_called_once_with("project-TestUser", json.loads(test_msg_json))
+        # 受信メッセージがMemoryManagerに保存されることを検証
+        self.mock_memory_manager_instance.add_message.assert_called_once_with("project-TestUser", json.loads(test_msg_json))
 
     def test_receive_cc_message(self):
         """
@@ -147,8 +147,8 @@ class TestUserInputAgent(unittest.TestCase):
         # CC受信ではイベントがセットされない（ブロックが解除されない）ことを確認
         self.assertFalse(self.agent.response_received_event.is_set())
 
-        # 受信メッセージがSessionManagerに保存されることを検証
-        self.mock_session_manager_instance.add_message.assert_called_once_with("project-TestUser", json.loads(test_msg_json))
+        # 受信メッセージがMemoryManagerに保存されることを検証
+        self.mock_memory_manager_instance.add_message.assert_called_once_with("project-TestUser", json.loads(test_msg_json))
 
     @patch('uuid.uuid4')
     def test_newjob_command(self, mock_uuid):
@@ -179,8 +179,8 @@ class TestUserInputAgent(unittest.TestCase):
             )
 
             # 送信したメッセージが履歴に保存されていることを検証
-            self.assertEqual(self.mock_session_manager_instance.add_message.call_count, 1) # ユーザーからの入力メッセージのみ
-            saved_message = self.mock_session_manager_instance.add_message.call_args[0][1]
+            self.assertEqual(self.mock_memory_manager_instance.add_message.call_count, 1) # ユーザーからの入力メッセージのみ
+            saved_message = self.mock_memory_manager_instance.add_message.call_args[0][1]
             self.assertEqual(saved_message['content'], "Second message")
             
             # コンソール出力の確認
@@ -199,8 +199,8 @@ class TestUserInputAgent(unittest.TestCase):
         self.agent = UserInputAgent(
             name="TestUserNoTarget",
             description="Handles user input for testing.",
-            session_id="project-TestUserNoTarget",
-            session_manager=self.mock_session_manager_instance,
+            memory_id="project-TestUserNoTarget",
+            memory_manager=self.mock_memory_manager_instance,
             default_target_agent=None # ここでNoneに設定
         )
         self.agent.broadcast = MagicMock()

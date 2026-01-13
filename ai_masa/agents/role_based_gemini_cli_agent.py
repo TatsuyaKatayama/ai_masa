@@ -12,7 +12,7 @@ class RoleBasedGeminiCliAgent(GeminiCliAgent, RoleBasedAgent):
     should take precedence over BaseAgent's, and RoleBasedAgent's __init__ logic is layered on top.
     """
     def __init__(self, name: str = "RoleBasedGeminiCliAgent", description: Optional[str] = None,
-                 user_lang: str = 'Japanese', session_id: str = "rb_gemini_session",
+                 user_lang: str = 'Japanese', memory_id: str = "rb_gemini_memory",
                  redis_host: str = 'localhost', redis_port: int = 6379, redis_db: int = 0,
                  role_prompt: Optional[str] = None, llm_command: Optional[str] = None, **kwargs):
 
@@ -30,7 +30,7 @@ class RoleBasedGeminiCliAgent(GeminiCliAgent, RoleBasedAgent):
             name=name,
             description=final_description,
             user_lang=user_lang,
-            session_id=session_id,
+            memory_id=memory_id,
             redis_host=redis_host,
             redis_port=redis_port,
             redis_db=redis_db,
@@ -44,7 +44,7 @@ if __name__ == "__main__":
     parser.add_argument("name", type=str, help="The name of the agent.")
     parser.add_argument("description", type=str, nargs='?', default=None, help="The description of the agent. If not provided, role_prompt will be used.")
     parser.add_argument("--user_lang", type=str, default="Japanese", help="The user language for the agent.")
-    parser.add_argument("--session_id", type=str, required=True, help="Session ID for the agent's history.")
+    parser.add_argument("--memory_id", type=str, required=True, help="Memory ID for the agent's history.")
     parser.add_argument("--redis_host", type=str, default="localhost", help="Redis host.")
     parser.add_argument("--redis_port", type=int, default=6379, help="Redis port.")
     parser.add_argument("--redis_db", type=int, default=0, help="Redis DB.")
@@ -57,7 +57,7 @@ if __name__ == "__main__":
         name=args.name,
         description=args.description,
         user_lang=args.user_lang,
-        session_id=args.session_id,
+        memory_id=args.memory_id,
         redis_host=args.redis_host,
         redis_port=args.redis_port,
         redis_db=args.redis_db,

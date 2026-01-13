@@ -21,15 +21,15 @@ class TestAgentManager(unittest.TestCase):
 
         # 依存関係をモック化
         self.mock_broker_patcher = patch('ai_masa.agents.base_agent.RedisBroker')
-        self.mock_session_manager_patcher = patch('ai_masa.agents.base_agent.SessionManager')
+        self.mock_memory_manager_patcher = patch('ai_masa.agents.base_agent.MemoryManager')
         self.mock_base_agent_start_heartbeat_patcher = patch('ai_masa.agents.base_agent.BaseAgent._start_heartbeat')
 
         self.MockRedisBroker = self.mock_broker_patcher.start()
-        self.MockSessionManager = self.mock_session_manager_patcher.start()
+        self.MockMemoryManager = self.mock_memory_manager_patcher.start()
         self.mock_base_agent_start_heartbeat = self.mock_base_agent_start_heartbeat_patcher.start()
 
         self.mock_broker_instance = self.MockRedisBroker.return_value
-        self.mock_session_manager_instance = self.MockSessionManager.return_value
+        self.mock_memory_manager_instance = self.MockMemoryManager.return_value
 
         # AgentManagerが監視スレッドを自動で開始しないようにモック化
         self.mock_agent_manager_start_monitoring_patcher = patch('ai_masa.agents.agent_manager.AgentManager._start_monitoring')
@@ -39,14 +39,14 @@ class TestAgentManager(unittest.TestCase):
         self.manager = AgentManager(
             name="AgentManager",
             description="I am an agent manager, monitoring the status of other agents.",
-            session_id="project-AgentManager", # 必須となったsession_idを渡す
-            session_manager=self.mock_session_manager_instance # モックを渡す
+            memory_id="project-AgentManager", # 必須となったmemory_idを渡す
+            memory_manager=self.mock_memory_manager_instance # モックを渡す
         )
 
     def tearDown(self):
         # すべてのパッチを停止
         self.mock_broker_patcher.stop()
-        self.mock_session_manager_patcher.stop()
+        self.mock_memory_manager_patcher.stop()
         self.mock_base_agent_start_heartbeat_patcher.stop()
         self.mock_agent_manager_start_monitoring_patcher.stop()
 
@@ -81,8 +81,8 @@ class TestAgentManager(unittest.TestCase):
         # そのため、add_messageが呼ばれるのが正しい挙動
         heartbeat_msg_dict = json.loads(heartbeat_msg)
         # message_idとtimestampは動的に生成されるため、ANYでマッチさせる
-        self.mock_session_manager_instance.add_message.assert_called_once()
-        call_args = self.mock_session_manager_instance.add_message.call_args[0]
+        self.mock_memory_manager_instance.add_message.assert_called_once()
+        call_args = self.mock_memory_manager_instance.add_message.call_args[0]
         self.assertEqual(call_args[0], "project-AgentManager")
         # message_id と timestamp を除外して比較
         call_args[1].pop('message_id')
@@ -171,8 +171,8 @@ class TestAgentManager(unittest.TestCase):
         self.assertIn("AgentTwo", published_data['content'])
 
         # AgentManager自身のセッションにメッセージが追加されたことを確認
-        self.mock_session_manager_instance.add_message.assert_called() # _on_message_receivedとbroadcastで計2回
-        add_message_calls = self.mock_session_manager_instance.add_message.call_args_list
+        self.mock_memory_manager_instance.add_message.assert_called() # _on_message_receivedとbroadcastで計2回
+        add_message_calls = self.mock_memory_manager_instance.add_message.call_args_list
         self.assertEqual(len(add_message_calls), 2) # 受信メッセージと送信メッセージ
         
         # 受信メッセージの確認

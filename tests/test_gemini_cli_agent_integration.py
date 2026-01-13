@@ -14,7 +14,7 @@ import subprocess # 追加
 from ai_masa.agents.gemini_cli_agent import GeminiCliAgent
 from ai_masa.models.message import Message
 from ai_masa.comms.redis_broker import RedisBroker
-from ai_masa.comms.session_manager import SessionManager # SessionManagerも必要
+from ai_masa.comms.memory_manager import MemoryManager # MemoryManagerも必要
 
 # 環境変数とRedis接続の確認
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -87,15 +87,15 @@ class TestGeminiCliAgentIntegration(unittest.TestCase):
         # Create a fresh temporary directory for each test
         self.temp_dir = tempfile.mkdtemp()
 
-        # BaseAgentのsession_idは必須なので、一意なIDを生成して渡す
-        self.session_id = f"integration-session-{self.agent_name}-{os.getpid()}-{time.time_ns()}"
+        # BaseAgentのmemory_idは必須なので、一意なIDを生成して渡す
+        self.memory_id = f"integration-memory-{self.agent_name}-{os.getpid()}-{time.time_ns()}"
 
         # テスト対象のエージェントをインスタンス化
         self.agent = GeminiCliAgent(
             name=self.agent_name,
             description="An integration test agent for Gemini CLI.", # descriptionを追加
             user_lang='English',
-            session_id=self.session_id, # session_idを追加
+            memory_id=self.memory_id, # memory_idを追加
             redis_host='localhost',
             redis_port=6379,
             redis_db=1, # テスト専用DBを指定
@@ -159,11 +159,11 @@ class TestGeminiCliAgentIntegration(unittest.TestCase):
                       f"Response for job {job_id} should contain '{expected_substring}'. Got: {response_msg.content}")
         return response_msg
 
-    def test_session_management_with_multiple_jobs(self):
+    def test_memory_management_with_multiple_jobs(self):
         """
         GeminiCliAgentが複数のジョブIDでセッションを正しく管理することを確認する。
         """
-        print("\n[Test] Starting session management test with multiple jobs...")
+        print("\n[Test] Starting memory management test with multiple jobs...")
 
         # Job00の最初のやり取り
         self._send_message_and_get_reply(
