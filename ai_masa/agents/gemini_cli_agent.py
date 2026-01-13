@@ -8,10 +8,10 @@ class GeminiCliAgent(BaseAgent):
     """
     外部のGemini CLIコマンドをLLMとして利用するエージェント。
     """
-    def __init__(self, name="GeminiCliAgent", redis_host='localhost', user_lang='Japanese', description=None, **kwargs):
-        llm_command = kwargs.pop('llm_command', None)
+    def __init__(self, name="GeminiCliAgent", redis_host='localhost', user_lang='Japanese', description=None, llm_command=None, **kwargs):
+
         if llm_command is None:
-            llm_command = "gemini --resume {session_id} --output-format json"
+            llm_command = "gemini --resume {session_id}"
         llm_session_create_command = kwargs.pop('llm_session_create_command', "")
         working_dir = kwargs.pop('working_dir', None)
 
@@ -88,6 +88,7 @@ class GeminiCliAgent(BaseAgent):
             # --resume を付けずにコマンドを実行し、新しいセッションを作成させる
             # parsed_llm_args を init_command に含める
             init_command = f"gemini {' '.join(self.parsed_llm_args)} {shlex.quote(self.role_prompt)}"
+            print(f"[{self.name}][{job_id}] DEBUG: Executing LLM init command: {init_command}", file=sys.stderr)
             subprocess.run(
                 init_command, shell=True, check=True,
                 capture_output=True, text=True, timeout=80,

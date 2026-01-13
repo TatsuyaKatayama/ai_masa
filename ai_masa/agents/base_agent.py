@@ -13,7 +13,7 @@ class BaseAgent:
                  llm_command="echo '{\"to_agent\": \"dummy\", \"content\": \"dummy response\"}'",
                  llm_session_create_command="echo 'new_session_id'",
                  working_dir=None,
-                 start_heartbeat=True):
+                 start_heartbeat=True, **kwargs):
         self.name = name
         self.description = description
         self.user_lang = user_lang
@@ -180,6 +180,7 @@ Example:
         # コマンドテンプレートのプレースホルダーを実際のセッションIDで置換
         command_to_run = self.llm_command.format(session_id=llm_session_id)
         command_to_run = os.path.expandvars(command_to_run) # Expand environment variables
+        print(f"[{self.name}][{llm_session_id}] DEBUG: Executing LLM invoke command: {command_to_run}", file=sys.stderr)
 
         try:
             process = subprocess.run(
@@ -188,6 +189,7 @@ Example:
                 cwd=self.working_dir
             )
             raw_stdout = process.stdout
+            print(f"[{self.name}][{llm_session_id}] DEBUG: Raw LLM response: {raw_stdout}", file=sys.stderr)
             
             # Gemini CLIの出力形式に対応する処理
             try:

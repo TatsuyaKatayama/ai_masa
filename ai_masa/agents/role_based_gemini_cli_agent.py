@@ -14,14 +14,8 @@ class RoleBasedGeminiCliAgent(RoleBasedAgent, GeminiCliAgent):
             # This ensures that GeminiCliAgent's _create_llm_session can use it for initial command
             llm_command = f"gemini --resume {{session_id}} --output-format json"
 
-        super().__init__(
-            name=name,
-            redis_host=redis_host,
-            user_lang=user_lang,
-            role_prompt=role_prompt,
-            llm_command=llm_command, # Pass the constructed or existing llm_command
-            **kwargs
-        )
+        RoleBasedAgent.__init__(self, name=name, redis_host=redis_host, user_lang=user_lang, role_prompt=role_prompt, **kwargs)
+        GeminiCliAgent.__init__(self, name=name, redis_host=redis_host, user_lang=user_lang, llm_command=llm_command, **kwargs)
 
 
 if __name__ == "__main__":
