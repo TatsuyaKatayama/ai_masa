@@ -12,7 +12,7 @@ class UserInputAgent(BaseAgent):
     LLMは使用しない。
     """
     def __init__(self, name: str = "UserInputAgent", description: str = "Handles user input from the console.",
-                 user_lang: str = 'Japanese', session_id: str = "user_input_session",
+                 user_lang: str = 'Japanese', memory_id: str = "user_input_memory",
                  redis_host: str = 'localhost', redis_port: int = 6379, redis_db: int = 0,
                  default_target_agent: Optional[str] = None, **kwargs):
         
@@ -21,7 +21,7 @@ class UserInputAgent(BaseAgent):
             name=name,
             description=description,
             user_lang=user_lang,
-            session_id=session_id,
+            memory_id=memory_id,
             redis_host=redis_host,
             redis_port=redis_port,
             redis_db=redis_db,
@@ -139,7 +139,7 @@ if __name__ == "__main__":
     parser.add_argument("name", type=str, help="The name of the agent.")
     parser.add_argument("description", type=str, nargs='?', default="Handles user input from the console.", help="Description of the agent.")
     parser.add_argument("--user_lang", type=str, default="Japanese", help="Language for user interaction.")
-    parser.add_argument("--session_id", type=str, required=True, help="Session ID for the agent's history.")
+    parser.add_argument("--memory_id", type=str, required=True, help="Memory ID for the agent's history.")
     parser.add_argument("--redis_host", type=str, default="localhost", help="Redis host.")
     parser.add_argument("--redis_port", type=int, default=6379, help="Redis port.")
     parser.add_argument("--redis_db", type=int, default=0, help="Redis DB.")
@@ -151,7 +151,7 @@ if __name__ == "__main__":
         name=args.name,
         description=args.description,
         user_lang=args.user_lang,
-        session_id=args.session_id,
+        memory_id=args.memory_id,
         redis_host=args.redis_host,
         redis_port=args.redis_port,
         redis_db=args.redis_db,

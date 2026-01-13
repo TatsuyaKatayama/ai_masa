@@ -86,12 +86,12 @@ class TestE2ETeamInteraction(unittest.TestCase):
         self.user_agent_name = "User_E2E"
         
         kintai_config['name'] = self.kintai_agent_name
-        kintai_config['session_id'] = f"e2e-session-{self.kintai_agent_name}"
+        kintai_config['memory_id'] = f"e2e-memory-{self.kintai_agent_name}"
         kintai_config.pop('type', None) # Remove key not accepted by __init__
         kintai_config['redis_db'] = 1 # Use test DB
 
         manager_config['name'] = self.team_manager_name
-        manager_config['session_id'] = f"e2e-session-{self.team_manager_name}"
+        manager_config['memory_id'] = f"e2e-memory-{self.team_manager_name}"
         manager_config.pop('type', None) # Remove key not accepted by __init__
         manager_config['redis_db'] = 1 # Use test DB
         

@@ -5,7 +5,7 @@ from .listener_agent import ListenerAgent
 
 class KintaiAgent(ListenerAgent):
     def __init__(self, name: str = "KintaiAgent", description: str = "An agent that tracks active agents via heartbeats.",
-                 user_lang: str = 'Japanese', session_id: str = "listener_session",
+                 user_lang: str = 'Japanese', memory_id: str = "listener_memory",
                  redis_host: str = 'localhost', redis_port: int = 6379, redis_db: int = 0,
                  heartbeat_timeout: int = 30, **kwargs):
         
@@ -14,7 +14,7 @@ class KintaiAgent(ListenerAgent):
             name=name,
             description=description,
             user_lang=user_lang,
-            session_id=session_id,
+            memory_id=memory_id,
             redis_host=redis_host,
             redis_port=redis_port,
             redis_db=redis_db,
@@ -86,7 +86,7 @@ if __name__ == "__main__":
                         default="An agent that tracks active agents via heartbeats.", 
                         help="Description of the agent.")
     parser.add_argument("--user_lang", type=str, default="Japanese", help="Language for user interaction.")
-    parser.add_argument("--session_id", type=str, required=True, help="Session ID for the agent's history.")
+    parser.add_argument("--memory_id", type=str, required=True, help="Memory ID for the agent's history.")
     parser.add_argument("--redis_host", type=str, default="localhost", help="Redis host.")
     parser.add_argument("--redis_port", type=int, default=6379, help="Redis port.")
     parser.add_argument("--redis_db", type=int, default=0, help="Redis DB.")

@@ -61,7 +61,7 @@ class TestFoamerAgent(unittest.TestCase):
         
         self.foamer_config = self.config['foamer'].copy() # Use copy to avoid modifying class-level dict
         self.foamer_config['name'] = 'FoamerTestAgent' # Use a different name for testing to avoid conflicts
-        self.foamer_config['session_id'] = 'test-foamer-session' # Add session_id
+        self.foamer_config['memory_id'] = 'test-foamer-memory' # Add memory_id
         self.foamer_config['redis_db'] = 1 # Use test DB
         # Remove the 'type' key as it's not expected by the agent's constructor
         if 'type' in self.foamer_config:

@@ -10,17 +10,17 @@ class TestRoleBasedGeminiCliAgent(unittest.TestCase):
     def setUp(self):
         """Set up mocks and agent instance for each test case."""
         self.mock_broker_patcher = patch('ai_masa.agents.base_agent.RedisBroker')
-        self.mock_session_manager_patcher = patch('ai_masa.agents.base_agent.SessionManager')
+        self.mock_memory_manager_patcher = patch('ai_masa.agents.base_agent.MemoryManager')
         self.mock_subprocess_patcher = patch('subprocess.run')
         self.mock_base_agent_start_heartbeat_patcher = patch('ai_masa.agents.base_agent.BaseAgent._start_heartbeat')
 
         self.MockRedisBroker = self.mock_broker_patcher.start()
-        self.MockSessionManager = self.mock_session_manager_patcher.start()
+        self.MockMemoryManager = self.mock_memory_manager_patcher.start()
         self.mock_subprocess_run = self.mock_subprocess_patcher.start()
         self.mock_base_agent_start_heartbeat = self.mock_base_agent_start_heartbeat_patcher.start()
 
         self.mock_broker_instance = self.MockRedisBroker.return_value
-        self.mock_session_manager_instance = self.MockSessionManager.return_value
+        self.mock_memory_manager_instance = self.MockMemoryManager.return_value
         
         # subprocess.runのデフォルトの戻り値を設定
         self.mock_subprocess_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
@@ -28,7 +28,7 @@ class TestRoleBasedGeminiCliAgent(unittest.TestCase):
     def tearDown(self):
         """Stop all patchers."""
         self.mock_broker_patcher.stop()
-        self.mock_session_manager_patcher.stop()
+        self.mock_memory_manager_patcher.stop()
         self.mock_subprocess_patcher.stop()
         self.mock_base_agent_start_heartbeat_patcher.stop()
 
@@ -39,14 +39,14 @@ class TestRoleBasedGeminiCliAgent(unittest.TestCase):
         agent_name = "TestRoleCliAgent"
         description_text = "A test CLI agent."
         role_prompt_text = "You are a test CLI agent." # This will be stored but not used in the main prompt
-        session_id = f"project-{agent_name}"
+        memory_id = f"project-{agent_name}"
         
         agent = RoleBasedGeminiCliAgent(
             name=agent_name,
             description=description_text,
             role_prompt=role_prompt_text,
-            session_id=session_id,
-            session_manager=self.mock_session_manager_instance,
+            memory_id=memory_id,
+            memory_manager=self.mock_memory_manager_instance,
             start_heartbeat=False
         )
         
@@ -56,7 +56,7 @@ class TestRoleBasedGeminiCliAgent(unittest.TestCase):
         self.assertIn(description_text, agent.role_prompt) # The final prompt should contain the description
         self.assertNotIn(role_prompt_text, agent.role_prompt) # but not the role_prompt text
         self.assertIn("gemini", agent.llm_command)
-        self.assertEqual(agent.session_id, session_id)
+        self.assertEqual(agent.memory_id, memory_id)
 
     def test_instantiation_with_custom_llm_command(self):
         """
@@ -66,15 +66,15 @@ class TestRoleBasedGeminiCliAgent(unittest.TestCase):
         description_text = "An agent with a custom LLM command."
         role_prompt_text = "You are an agent with a custom LLM command."
         custom_llm_command = "my_custom_llm_cli --model custom-model --param value"
-        session_id = f"project-{agent_name}"
+        memory_id = f"project-{agent_name}"
         
         agent = RoleBasedGeminiCliAgent(
             name=agent_name,
             description=description_text,
             role_prompt=role_prompt_text,
             llm_command=custom_llm_command,
-            session_id=session_id,
-            session_manager=self.mock_session_manager_instance,
+            memory_id=memory_id,
+            memory_manager=self.mock_memory_manager_instance,
             start_heartbeat=False
         )
 
@@ -84,7 +84,7 @@ class TestRoleBasedGeminiCliAgent(unittest.TestCase):
         self.assertIn(description_text, agent.role_prompt)
         self.assertNotIn(role_prompt_text, agent.role_prompt)
         self.assertEqual(agent.llm_command, custom_llm_command)
-        self.assertEqual(agent.session_id, session_id)
+        self.assertEqual(agent.memory_id, memory_id)
 
     def test_instantiation_without_explicit_description_uses_role_prompt(self):
         """
@@ -92,13 +92,13 @@ class TestRoleBasedGeminiCliAgent(unittest.TestCase):
         """
         agent_name = "TestRoleCliAgentNoDesc"
         role_prompt_text = "Only role prompt provided."
-        session_id = f"project-{agent_name}"
+        memory_id = f"project-{agent_name}"
 
         agent = RoleBasedGeminiCliAgent(
             name=agent_name,
             role_prompt=role_prompt_text,
-            session_id=session_id,
-            session_manager=self.mock_session_manager_instance,
+            memory_id=memory_id,
+            memory_manager=self.mock_memory_manager_instance,
             start_heartbeat=False
         )
 
@@ -111,12 +111,12 @@ class TestRoleBasedGeminiCliAgent(unittest.TestCase):
         Test that if neither description nor role_prompt is given, a default is used.
         """
         agent_name = "TestRoleCliAgentDefaultDesc"
-        session_id = f"project-{agent_name}"
+        memory_id = f"project-{agent_name}"
 
         agent = RoleBasedGeminiCliAgent(
             name=agent_name,
-            session_id=session_id,
-            session_manager=self.mock_session_manager_instance,
+            memory_id=memory_id,
+            memory_manager=self.mock_memory_manager_instance,
             start_heartbeat=False
         )
 

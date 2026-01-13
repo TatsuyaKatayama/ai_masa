@@ -100,12 +100,12 @@ class TestGenerateTmuxConfig(unittest.TestCase):
 
         # Check for coder pane (and its command details)
         self.assertIn("- coder:", content)
-        expected_coder_command = "python -m ai_masa.agents.role_based_gemini_cli_agent Coder --session_id test_project-Coder 'You are a professional programmer.' --user_lang Japanese --role_prompt 'You are a professional programmer.'"
+        expected_coder_command = "python -m ai_masa.agents.role_based_gemini_cli_agent Coder --memory_id test_project-Coder 'You are a professional programmer.' --user_lang Japanese --role_prompt 'You are a professional programmer.'"
         self.assertIn(expected_coder_command, content)
 
         # Check for foamer pane (and its command details including llm_command)
         self.assertIn("- foamer:", content)
-        expected_foamer_command = "python -m ai_masa.agents.role_based_gemini_cli_agent Foamer --session_id test_project-Foamer 'You are an expert OpenFOAM user.' --user_lang English --role_prompt 'You are an expert OpenFOAM user.' --llm_command 'gemini -y --resume {session_id} --output-format json'"
+        expected_foamer_command = "python -m ai_masa.agents.role_based_gemini_cli_agent Foamer --memory_id test_project-Foamer 'You are an expert OpenFOAM user.' --user_lang English --role_prompt 'You are an expert OpenFOAM user.' --llm_command 'gemini -y --resume {session_id} --output-format json'"
         self.assertIn(expected_foamer_command, content)
 
 

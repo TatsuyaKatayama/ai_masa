@@ -11,28 +11,28 @@ class TestKintaiAgent(unittest.TestCase):
     def setUp(self):
         """Set up mocks and agent instance for each test case."""
         self.mock_broker_patcher = patch('ai_masa.agents.base_agent.RedisBroker')
-        self.mock_session_manager_patcher = patch('ai_masa.agents.base_agent.SessionManager')
+        self.mock_memory_manager_patcher = patch('ai_masa.agents.base_agent.MemoryManager')
         self.mock_base_agent_start_heartbeat_patcher = patch('ai_masa.agents.base_agent.BaseAgent._start_heartbeat')
 
         self.MockRedisBroker = self.mock_broker_patcher.start()
-        self.MockSessionManager = self.mock_session_manager_patcher.start()
+        self.MockMemoryManager = self.mock_memory_manager_patcher.start()
         self.mock_base_agent_start_heartbeat = self.mock_base_agent_start_heartbeat_patcher.start()
 
         self.mock_broker_instance = self.MockRedisBroker.return_value
-        self.mock_session_manager_instance = self.MockSessionManager.return_value
+        self.mock_memory_manager_instance = self.MockMemoryManager.return_value
 
         self.agent = KintaiAgent(
             name="TestKintaiAgent",
             description="An agent that tracks active agents via heartbeats.",
-            session_id="project-TestKintaiAgent", # 必須となったsession_idを渡す
-            session_manager=self.mock_session_manager_instance, # モックを渡す
+            memory_id="project-TestKintaiAgent", # 必須となったmemory_idを渡す
+            memory_manager=self.mock_memory_manager_instance, # モックを渡す
             heartbeat_timeout=10
         )
 
     def tearDown(self):
         """Stop all patchers."""
         self.mock_broker_patcher.stop()
-        self.mock_session_manager_patcher.stop()
+        self.mock_memory_manager_patcher.stop()
         self.mock_base_agent_start_heartbeat_patcher.stop()
 
     def test_initialization(self):
@@ -40,8 +40,7 @@ class TestKintaiAgent(unittest.TestCase):
         self.assertEqual(self.agent.name, "TestKintaiAgent")
         self.assertEqual(self.agent.heartbeat_timeout, timedelta(seconds=10))
         self.assertEqual(self.agent.active_agents, {})
-        # session_idが正しく設定されていることを確認
-        self.assertEqual(self.agent.session_id, "project-TestKintaiAgent")
+        self.assertEqual(self.agent.memory_id, "project-TestKintaiAgent")
 
     @patch('ai_masa.agents.kintai_agent.datetime')
     def test_on_message_received_heartbeat_updates_active_agents(self, mock_datetime):
@@ -67,8 +66,8 @@ class TestKintaiAgent(unittest.TestCase):
         
         # BaseAgentの_on_message_receivedにより、CCされたメッセージは自身の履歴に追加される
         heartbeat_msg_dict = json.loads(heartbeat_msg)
-        self.mock_session_manager_instance.add_message.assert_called_once() # 受信したハートビート
-        call_args = self.mock_session_manager_instance.add_message.call_args[0]
+        self.mock_memory_manager_instance.add_message.assert_called_once() # 受信したハートビート
+        call_args = self.mock_memory_manager_instance.add_message.call_args[0]
         self.assertEqual(call_args[0], "project-TestKintaiAgent")
         # message_idとtimestampは動的に生成されるため、ANYでマッチさせる
         call_args[1].pop('message_id')
@@ -108,14 +107,14 @@ class TestKintaiAgent(unittest.TestCase):
 
         # 受信した問い合わせメッセージが自身の履歴に追加されたことを確認
         query_msg_dict = json.loads(query_msg)
-        self.mock_session_manager_instance.add_message.assert_any_call("project-TestKintaiAgent", query_msg_dict)
+        self.mock_memory_manager_instance.add_message.assert_any_call("project-TestKintaiAgent", query_msg_dict)
         # 送信した応答メッセージも自身の履歴に追加されたことを確認
-        self.mock_session_manager_instance.add_message.assert_any_call(
+        self.mock_memory_manager_instance.add_message.assert_any_call(
             "project-TestKintaiAgent", 
             unittest.mock.ANY # ここは動的に生成されるメッセージなのでANYで対応
         )
         # add_messageが計2回呼ばれたことを確認 (受信と送信)
-        self.assertEqual(self.mock_session_manager_instance.add_message.call_count, 2)
+        self.assertEqual(self.mock_memory_manager_instance.add_message.call_count, 2)
 
 
     @patch('ai_masa.agents.kintai_agent.datetime')
@@ -148,7 +147,7 @@ class TestKintaiAgent(unittest.TestCase):
         # BaseAgentの_is_message_for_meでフィルタリングされるため、active_agentsは更新されない
         self.assertEqual(len(self.agent.active_agents), 0)
         # BaseAgentのadd_messageも呼ばれない
-        self.mock_session_manager_instance.add_message.assert_not_called()
+        self.mock_memory_manager_instance.add_message.assert_not_called()
         # broadcastも呼ばれない
         self.mock_broker_instance.publish.assert_not_called()
 
