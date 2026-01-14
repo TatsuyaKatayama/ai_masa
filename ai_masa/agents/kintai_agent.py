@@ -7,7 +7,7 @@ class KintaiAgent(ListenerAgent):
     def __init__(self, name: str = "KintaiAgent", description: str = "An agent that tracks active agents via heartbeats.",
                  user_lang: str = 'Japanese', memory_id: str = "listener_memory",
                  redis_host: str = 'localhost', redis_port: int = 6379, redis_db: int = 0,
-                 heartbeat_timeout: int = 30, **kwargs):
+                 heartbeat_timeout: int = 30, start_heartbeat: bool = False, **kwargs):
         
         # KintaiAgent自身はハートビートを送信しないため、start_heartbeat=Falseに設定
         super().__init__(

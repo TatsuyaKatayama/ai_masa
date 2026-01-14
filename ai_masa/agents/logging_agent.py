@@ -8,7 +8,7 @@ class LoggingAgent(ListenerAgent):
     def __init__(self, name: str = "Logger", description: str = "An agent that logs all messages.",
                  user_lang: str = 'Japanese', memory_id: str = "listener_memory",
                  redis_host: str = 'localhost', redis_port: int = 6379, redis_db: int = 0,
-                 **kwargs):
+                 start_heartbeat: bool = False, **kwargs):
         # LoggingAgentはハートビート不要のためFalseに設定
         super().__init__(
             name=name,

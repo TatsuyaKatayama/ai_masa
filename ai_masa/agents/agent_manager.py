@@ -127,8 +127,14 @@ if __name__ == "__main__":
     parser.add_argument("--redis_port", type=int, default=6379, help="Redis port")
     parser.add_argument("--redis_db", type=int, default=0, help="Redis DB")
     parser.add_argument("--timeout_seconds", type=int, default=60, help="Timeout for agent heartbeats in seconds")
+    parser.add_argument("--logging_level", type=str, default="INFO", help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 
     args = parser.parse_args()
+
+    # Configure logging
+    import logging
+    log_level = getattr(logging, args.logging_level.upper(), logging.INFO)
+    logging.basicConfig(level=log_level, stream=sys.stdout, format='[%(name)s][%(levelname)s] %(message)s')
 
     agent = AgentManager(
         name=args.name,
