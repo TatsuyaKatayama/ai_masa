@@ -5,12 +5,15 @@ import threading
 import time
 import os
 import argparse
+import logging
 from typing import Optional, List, Dict, Any
 
 from ..models.message import Message
 from ..comms.redis_broker import RedisBroker
 from ..comms.memory_manager import MemoryManager
 from ..models.prompts import JSON_FORMAT_EXAMPLE, PROMPT_TEMPLATE, OBSERVER_INSTRUCTION
+
+logger = logging.getLogger(__name__)
 
 class BaseAgent:
     def __init__(self, name: str, description: str, user_lang: str = 'Japanese',
@@ -37,7 +40,7 @@ class BaseAgent:
         else:
             self.memory_manager = MemoryManager(host=redis_host, port=redis_port, db=redis_db)
         
-        print(f"[{self.name}] Using memory ID: {self.memory_id}")
+        logger.info(f"[{self.name}] Using memory ID: {self.memory_id}")
         
         self.broker = RedisBroker(host=redis_host, port=redis_port, db=redis_db)
         self.broker.connect()
@@ -50,7 +53,7 @@ class BaseAgent:
             self._start_heartbeat()
 
     def shutdown(self):
-        print(f"[{self.name}] Shutting down...")
+        logger.info(f"[{self.name}] Shutting down...")
         self.shutdown_event.set()
         if self.heartbeat_timer:
             self.heartbeat_timer.cancel()
@@ -63,7 +66,7 @@ class BaseAgent:
         self.heartbeat_timer.start()
 
     def _start_heartbeat(self):
-        print(f"[{self.name}] Starting heartbeat...")
+        logger.info(f"[{self.name}] Starting heartbeat...")
         self._send_heartbeat()
 
     def _generate_role_prompt(self):
@@ -78,7 +81,7 @@ Example:
 """.strip()
 
     def observe_loop(self):
-        print(f"[{self.name}] Listening on Redis...")
+        logger.info(f"[{self.name}] Listening on Redis...")
         self.broker.subscribe(self._on_message_received, shutdown_event=self.shutdown_event)
 
     def _is_message_for_me(self, msg: Message) -> bool:
@@ -108,14 +111,14 @@ Example:
                 return
 
             if msg.to_agent == self.name:
-                print(f"[{self.name}][{job_id}] 📨 Received from {msg.from_agent}: {msg.content}")
+                logger.info(f"[{self.name}][{job_id}] 📨 Received from {msg.from_agent}: {msg.content}")
                 self.think_and_respond(msg, job_id)
             elif self.name in (msg.cc_agents or []):
-                print(f"[{self.name}][{job_id}] 👀 (CC) Saw message from {msg.from_agent}")
+                logger.info(f"[{self.name}][{job_id}] 👀 (CC) Saw message from {msg.from_agent}")
                 self.think_and_respond(msg, job_id, is_observer=True)
 
         except Exception as e:
-            print(f"[{self.name}] Error in _on_message_received: {e}")
+            logger.error(f"[{self.name}] Error in _on_message_received: {e}")
 
     def think_and_respond(self, trigger_msg: Message, job_id: str, is_observer: bool = False):
         agent_state = self.memory_manager.get_agent_state(self.memory_id, self.name) or {}
@@ -123,22 +126,26 @@ Example:
         llm_session_id = llm_sessions.get(job_id)
         
         if not llm_session_id:
-            print(f"[{self.name}][{job_id}] No LLM session found. Creating a new one...")
+            logger.info(f"[{self.name}][{job_id}] No LLM session found. Creating a new one...")
             llm_session_id = self._create_llm_session(job_id)
             if not llm_session_id:
-                print(f"[{self.name}][{job_id}] Failed to create LLM session. Aborting.")
+                logger.error(f"[{self.name}][{job_id}] Failed to create LLM session. Aborting.")
                 return
             
             llm_sessions[job_id] = llm_session_id
             agent_state["llm_sessions"] = llm_sessions
             self.memory_manager.update_agent_state(self.memory_id, self.name, agent_state)
-            print(f"[{self.name}][{job_id}] New LLM session created: {llm_session_id}")
+            logger.info(f"[{self.name}][{job_id}] New LLM session created: {llm_session_id}")
 
+        logger.debug(f"[{self.name}][{job_id}] Starting think_and_respond.")
         prompt = self._build_prompt(trigger_msg, job_id, is_observer)
+        logger.debug(f"[{self.name}][{job_id}] Built prompt:\n---PROMPT---\n{prompt}\n---END PROMPT---")
+        
         llm_response_json = self._invoke_llm(prompt, llm_session_id)
+        logger.debug(f"[{self.name}][{job_id}] Received LLM response json:\n{llm_response_json}")
         
         if not llm_response_json:
-            print(f"[{self.name}][{job_id}] Error: LLM did not return a response.")
+            logger.error(f"[{self.name}][{job_id}] Error: LLM did not return a response.")
             return
 
         try:
@@ -150,12 +157,12 @@ Example:
                 job_id=job_id
             )
         except json.JSONDecodeError as e:
-            print(f"[{self.name}][{job_id}] Error decoding LLM response: {e}\nReceived: {llm_response_json}")
+            logger.error(f"[{self.name}][{job_id}] Error decoding LLM response: {e}\nReceived: {llm_response_json}")
         except Exception as e:
-            print(f"[{self.name}][{job_id}] Error processing LLM response: {e}")
+            logger.error(f"[{self.name}][{job_id}] Error processing LLM response: {e}")
 
     def _create_llm_session(self, job_id: str) -> Optional[str]:
-        print(f"[{self.name}][{job_id}] Initializing LLM session with role: {self.role_prompt}")
+        logger.info(f"[{self.name}][{job_id}] Initializing LLM session with role: {self.role_prompt}")
         try:
             process = subprocess.run(
                 self.llm_session_create_command,
@@ -166,10 +173,10 @@ Example:
             session_id = process.stdout.strip().split('\n')[-1]
             return session_id
         except subprocess.CalledProcessError as e:
-            print(f"[{self.name}][{job_id}] Error executing LLM session creation command: {e}\nStderr: {e.stderr}")
+            logger.error(f"[{self.name}][{job_id}] Error executing LLM session creation command: {e}\nStderr: {e.stderr}")
             return None
         except FileNotFoundError:
-            print(f"[{self.name}][{job_id}] Error: LLM command not found: '{self.llm_session_create_command}'")
+            logger.error(f"[{self.name}][{job_id}] Error: LLM command not found: '{self.llm_session_create_command}'")
             return None
 
     def _build_prompt(self, trigger_msg: Message, job_id: str, is_observer: bool = False) -> str:
@@ -193,8 +200,10 @@ Example:
         )
 
     def _invoke_llm(self, prompt: str, llm_session_id: str) -> Optional[str]:
-        print(f"[{self.name}][{llm_session_id}] 🧠 Thinking...")
+        logger.debug(f"[{self.name}][{llm_session_id}] Starting _invoke_llm.")
+        logger.info(f"[{self.name}][{llm_session_id}] 🧠 Thinking...")
         command_to_run = os.path.expandvars(self.llm_command.format(session_id=llm_session_id))
+        logger.debug(f"[{self.name}][{llm_session_id}] Running LLM command: {command_to_run}")
         
         try:
             process = subprocess.run(
@@ -203,6 +212,7 @@ Example:
                 cwd=self.working_dir
             )
             raw_stdout = process.stdout
+            logger.debug(f"[{self.name}][{llm_session_id}] LLM raw stdout:\n{raw_stdout}")
             try:
                 outer_response = json.loads(raw_stdout)
                 if "response" in outer_response:
@@ -211,20 +221,24 @@ Example:
                         json_start = content_str.find("{")
                         json_end = content_str.rfind("}") + 1
                         if json_start != -1 and json_end != -1:
-                            return json.dumps(json.loads(content_str[json_start:json_end]))
+                            final_response = json.dumps(json.loads(content_str[json_start:json_end]))
+                            logger.debug(f"[{self.name}][{llm_session_id}] Parsed JSON response: {final_response}")
+                            return final_response
+                logger.debug(f"[{self.name}][{llm_session_id}] Returning raw stdout as response.")
                 return raw_stdout
             except json.JSONDecodeError:
+                logger.debug(f"[{self.name}][{llm_session_id}] Returning raw stdout as response (JSON decode failed).")
                 return raw_stdout
         except subprocess.CalledProcessError as e:
-            print(f"[{self.name}] Error executing LLM command: {e}\nStderr: {e.stderr}")
+            logger.error(f"[{self.name}] Error executing LLM command: {e}\nStderr: {e.stderr}")
             return None
         except FileNotFoundError:
-            print(f"[{self.name}] Error: LLM command not found: '{command_to_run}'")
+            logger.error(f"[{self.name}] Error: LLM command not found: '{command_to_run}'")
             return None
 
     def broadcast(self, target: str, content: str, cc: Optional[List[str]] = None, job_id: str = "default"):
         if not target or (not content and content != "heartbeat"):
-            print(f"[{self.name}][{job_id}] ⚠️ Missing target or content. Aborting broadcast.")
+            logger.warning(f"[{self.name}][{job_id}] Missing target or content. Aborting broadcast.")
             return
 
         msg = Message(self.name, target, content, cc_agents=cc, job_id=job_id)
@@ -237,9 +251,15 @@ Example:
         self.broker.publish(msg_json)
         
         if not (content == "heartbeat" and job_id == "_system_"):
-            print(f"[{self.name}][{job_id}] 🚀 Sent to {target}: {content}")
+            logger.info(f"[{self.name}][{job_id}] 🚀 Sent to {target}: {content}")
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='[%(levelname)s] %(message)s')
+    # For more verbose debug logging, uncomment the line below:
+    # logging.getLogger(__name__).setLevel(logging.DEBUG)
+    # Or, to set all loggers to DEBUG:
+    # logging.basicConfig(level=logging.DEBUG, stream=sys.stdout, format='[%(levelname)s] %(message)s')
+
     parser = argparse.ArgumentParser(description="Run a BaseAgent.")
     parser.add_argument("name", type=str, help="Name of the agent")
     parser.add_argument("description", type=str, help="Description of the agent")
@@ -251,7 +271,13 @@ if __name__ == "__main__":
     parser.add_argument("--llm_command", type=str, default="echo '{\"to_agent\": \"dummy\", \"content\": \"dummy response\"}'", help="Command to invoke LLM")
     parser.add_argument("--llm_session_create_command", type=str, default="echo 'new_session_id'", help="Command to create LLM session")
     
+    parser.add_argument("--logging_level", type=str, default="INFO", help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
+    
     args = parser.parse_args()
+
+    # Configure logging
+    log_level = getattr(logging, args.logging_level.upper(), logging.INFO)
+    logging.basicConfig(level=log_level, stream=sys.stdout, format='[%(name)s][%(levelname)s] %(message)s')
 
     agent = BaseAgent(
         name=args.name,

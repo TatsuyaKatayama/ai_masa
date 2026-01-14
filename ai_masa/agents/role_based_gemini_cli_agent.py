@@ -3,6 +3,7 @@ from .role_based_agent import RoleBasedAgent
 from .gemini_cli_agent import GeminiCliAgent
 import sys
 import argparse
+import logging
 
 class RoleBasedGeminiCliAgent(GeminiCliAgent, RoleBasedAgent):
     """
@@ -50,8 +51,13 @@ if __name__ == "__main__":
     parser.add_argument("--redis_db", type=int, default=0, help="Redis DB.")
     parser.add_argument("--role_prompt", type=str, help="The role prompt for the agent. Used as description if --description is not set.")
     parser.add_argument('--llm_command', type=str, default=None, help='The command to execute for the LLM.')
+    parser.add_argument("--logging_level", type=str, default="INFO", help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
     
     args = parser.parse_args()
+
+    # Configure logging
+    log_level = getattr(logging, args.logging_level.upper(), logging.INFO)
+    logging.basicConfig(level=log_level, stream=sys.stdout, format='[%(name)s][%(levelname)s] %(message)s')
 
     agent = RoleBasedGeminiCliAgent(
         name=args.name,

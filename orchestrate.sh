@@ -60,7 +60,8 @@ try:
         str(setting.get('project_name', '')),
         str(setting.get('team_name', '')),
         str(setting.get('template', '')),
-        str(setting.get('session_root', 'works'))
+        str(setting.get('memory_root', 'works')),
+        str(setting.get('logging_level', 'INFO'))
     ]
     print(' '.join(values))
 except (yaml.YAMLError, FileNotFoundError, KeyError):
@@ -72,8 +73,8 @@ except (yaml.YAMLError, FileNotFoundError, KeyError):
     fi
 
     # Read parsed values into variables
-    local project_name team_name template session_root
-    read -r project_name team_name template session_root <<< "$config_values"
+    local project_name team_name template memory_root logging_level
+    read -r project_name team_name template memory_root logging_level <<< "$config_values"
 
     if [ -z "$project_name" ] || [ -z "$team_name" ] || [ -z "$template" ]; then
         fail "Setting '${setting_name}' is missing one or more required keys (project_name, team_name, template)."
@@ -81,8 +82,8 @@ except (yaml.YAMLError, FileNotFoundError, KeyError):
 
     # 4. Set up Paths
     local ai_masa_project_root="."
-    local tmuxinator_session_root="${session_root}"
-    local project_working_dir="${tmuxinator_session_root}/${project_name}"
+    local tmuxinator_memory_root="${memory_root}"
+    local project_working_dir="${tmuxinator_memory_root}/${project_name}"
     local tmux_config_path="${project_working_dir}/${project_name}.yml"
     local template_path="./config/templates/${template}"
 
@@ -90,10 +91,10 @@ except (yaml.YAMLError, FileNotFoundError, KeyError):
         fail "Template file not found at '$template_path'."
     fi
 
-    # Check if the session root will be newly created
-    local session_root_is_new=false
+    # Check if the memory root will be newly created
+    local memory_root_is_new=false
     if [ ! -d "$project_working_dir" ]; then
-        session_root_is_new=true
+        memory_root_is_new=true
     fi
 
     # 5. Generate Tmuxinator Config
@@ -106,11 +107,12 @@ except (yaml.YAMLError, FileNotFoundError, KeyError):
     generation_output=$(python "./tools/generate_tmux_config.py" \
             "${team_name}" \
             "${ai_masa_project_root}" \
-            "${tmuxinator_session_root}" \
+            "${tmuxinator_memory_root}" \
             "$(realpath "$venv_path")" \
             "${template_path}" \
             "${tmux_config_path}" \
-            "${project_name}")
+            "${project_name}" \
+            "${logging_level}")
     
     if [ $? -ne 0 ]; then
         fail "Failed to generate tmuxinator config."

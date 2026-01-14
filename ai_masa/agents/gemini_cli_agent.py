@@ -3,8 +3,11 @@ import subprocess
 import shlex
 import os
 import argparse
+import logging
 from typing import Optional
 from .base_agent import BaseAgent
+
+logger = logging.getLogger(__name__)
 
 class GeminiCliAgent(BaseAgent):
     """
@@ -60,13 +63,14 @@ class GeminiCliAgent(BaseAgent):
             if not os.path.exists(settings_path):
                 with open(settings_path, 'w') as f:
                     f.write('{}')
-                print(f"[{self.name}] Created {settings_path}")
+                logger.info(f"[{self.name}] Created {settings_path}")
 
     def _create_llm_session(self, job_id: str) -> Optional[str]:
         """
         Creates a new Gemini CLI session by running a one-shot command and returns the next available session index.
         It checks both stdout and stderr for the session list, as gemini CLI's output stream may vary.
         """
+        logger.debug(f"[{self.name}][{job_id}] Starting _create_llm_session.")
         import re
         session_index = 0
         try:
@@ -78,6 +82,7 @@ class GeminiCliAgent(BaseAgent):
             # The command might not raise an error even if it fails, so we check stderr.
             # The output might be in stdout or stderr.
             output = result.stdout.strip() or result.stderr.strip()
+            logger.debug(f"[{self.name}][{job_id}] 'gemini --list-sessions' output:\n{output}")
 
             if "No previous sessions found for this project." in output or "No sessions found." in output:
                 session_index = 1
@@ -94,37 +99,46 @@ class GeminiCliAgent(BaseAgent):
                         session_index = len(session_lines) + 1
                     else:
                         # If we have output but can't parse it, it's safer to abort.
-                        print(f"[{self.name}][{job_id}] CRITICAL: Could not determine session count from gemini output.", file=sys.stderr)
-                        print(f"[{self.name}][{job_id}] Output was: {output}", file=sys.stderr)
+                        logger.critical(f"[{self.name}][{job_id}] Could not determine session count from gemini output.")
+                        logger.critical(f"[{self.name}][{job_id}] Output was: {output}")
                         return None
             
             if session_index == 0: # Should not happen if logic is correct
-                print(f"[{self.name}][{job_id}] CRITICAL: Calculated session_index is 0. Aborting.", file=sys.stderr)
+                logger.critical(f"[{self.name}][{job_id}] Calculated session_index is 0. Aborting.")
                 return None
 
         except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            print(f"[{self.name}][{job_id}] CRITICAL: Failed to execute 'gemini --list-sessions': {e}", file=sys.stderr)
+            logger.critical(f"[{self.name}][{job_id}] Failed to execute 'gemini --list-sessions': {e}")
             return None
 
         try:
             init_command = f"gemini {' '.join(self.parsed_llm_args)} {shlex.quote(self.role_prompt)}"
+            logger.debug(f"[{self.name}][{job_id}] Running session init command: {init_command}")
             subprocess.run(
                 init_command, shell=True, check=True,
                 capture_output=True, text=True, timeout=80,
                 cwd=self.working_dir
             )
         except subprocess.CalledProcessError as e:
-            print(f"[{self.name}][{job_id}] Info: Initial gemini command for session creation finished with code {e.returncode}. This is often expected.")
+            logger.info(f"[{self.name}][{job_id}] Initial gemini command for session creation finished with code {e.returncode}. This is often expected.")
         except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-            print(f"[{self.name}][{job_id}] Error during Gemini session initialization: {e}", file=sys.stderr)
+            logger.error(f"[{self.name}][{job_id}] Error during Gemini session initialization: {e}")
             return None
         
-        print(f"[{self.name}][{job_id}] New session will use index: {session_index}")
+        logger.info(f"[{self.name}][{job_id}] New session will use index: {session_index}")
+        logger.debug(f"[{self.name}][{job_id}] Finished _create_llm_session.")
         return str(session_index)
 
 
 
 if __name__ == "__main__":
+    # Configure basic logging for console output
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='[%(levelname)s] %(message)s')
+    # For more verbose debug logging, uncomment the line below:
+    # logging.getLogger(__name__).setLevel(logging.DEBUG)
+    # Or, to set all loggers to DEBUG:
+    # logging.basicConfig(level=logging.DEBUG, stream=sys.stdout, format='[%(levelname)s] %(message)s')
+
     parser = argparse.ArgumentParser(description="Launch a GeminiCliAgent.")
     parser.add_argument("name", type=str, help="The name of the agent.")
     parser.add_argument("description", type=str, nargs='?', default=None, help="The description of the agent.")
@@ -136,8 +150,13 @@ if __name__ == "__main__":
     parser.add_argument('--llm_command', type=str, default=None, help='The command to execute for the LLM.')
     parser.add_argument('--llm_session_create_command', type=str, default=None, help='The command to create LLM session.')
     parser.add_argument('--working_dir', type=str, default=None, help='Working directory for LLM commands.')
+    parser.add_argument("--logging_level", type=str, default="INFO", help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 
     args = parser.parse_args()
+
+    # Configure logging
+    log_level = getattr(logging, args.logging_level.upper(), logging.INFO)
+    logging.basicConfig(level=log_level, stream=sys.stdout, format='[%(name)s][%(levelname)s] %(message)s')
 
     agent = GeminiCliAgent(
         name=args.name,
@@ -154,6 +173,6 @@ if __name__ == "__main__":
     try:
         agent.observe_loop()
     except KeyboardInterrupt:
-        print(f"[{agent.name}] Shutting down.")
+        logger.info(f"[{agent.name}] Shutting down.")
     finally:
         agent.shutdown()

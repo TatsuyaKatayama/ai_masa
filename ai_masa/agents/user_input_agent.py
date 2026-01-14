@@ -55,13 +55,9 @@ class UserInputAgent(BaseAgent):
 
             job_id = msg.job_id or "default"
             
-            # 自分宛のメッセージであれば、表示して入力ブロックを解除
+            # 自分宛のメッセージであれば、入力ブロックを解除
             if msg.to_agent == self.name:
-                print(f"\n[{self.name}][{job_id}] 📨 Received from {msg.from_agent}: {msg.content}")
                 self.response_received_event.set()
-            elif self.name in (msg.cc_agents or []):
-                 # CCの場合は表示するだけ (入力ブロックは解除しない)
-                 print(f"\n[{self.name}][{job_id}] 👀 (CC) Saw message from {msg.from_agent} to {msg.to_agent}: {msg.content}")
 
         except Exception as e:
             print(f"[{self.name}] Error in _on_message_received: {e}")
@@ -144,8 +140,14 @@ if __name__ == "__main__":
     parser.add_argument("--redis_port", type=int, default=6379, help="Redis port.")
     parser.add_argument("--redis_db", type=int, default=0, help="Redis DB.")
     parser.add_argument("--default_target_agent", type=str, help="The default agent to send messages to.")
+    parser.add_argument("--logging_level", type=str, default="INFO", help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 
     args = parser.parse_args()
+
+    # Configure logging
+    import logging
+    log_level = getattr(logging, args.logging_level.upper(), logging.INFO)
+    logging.basicConfig(level=log_level, stream=sys.stdout, format='[%(name)s][%(levelname)s] %(message)s')
 
     agent = UserInputAgent(
         name=args.name,

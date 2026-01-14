@@ -23,7 +23,7 @@ def load_yaml_config(config_path):
         return yaml.safe_load(f)
 
 
-def build_panes(team_name, ai_masa_project_root, venv_activate_path, project_name):
+def build_panes(team_name, ai_masa_project_root, venv_activate_path, project_name, logging_level):
     agent_library_path = os.path.join(
         ai_masa_project_root, "config", "agent_library.yml"
     )
@@ -84,62 +84,46 @@ def build_panes(team_name, ai_masa_project_root, venv_activate_path, project_nam
 
         working_dir = agent_config.get("working_dir")
 
-        # Generate a unique session ID for each agent within the project
+        # Generate a unique memory ID for each agent within the project
+        memory_id = f"{project_name}-{agent_name_in_config}"
 
-        session_id = f"{project_name}-{agent_name_in_config}"
+        base_command = f"python -m ai_masa.agents.{agent_module_path}"
+        positional_args = [shlex.quote(agent_name_in_config)]
+        optional_args = [f"--memory_id {shlex.quote(memory_id)}"]
 
-        command_parts = [
-            f"python -m ai_masa.agents.{agent_module_path}",
-            shlex.quote(agent_name_in_config),
-        ]
-
-        # Add arguments based on agent type
-
-        if (
-            "base_agent" in agent_module_path
-            or "gemini_cli_agent" in agent_module_path
-            or "role_based" in agent_module_path.lower()
-        ):
-            command_parts.append(f"--session_id {shlex.quote(session_id)}")
-
+        # Add description and user_lang for agents that are not user_input_agent
         if 'user_input_agent' not in agent_module_path:
-            # For RoleBasedAgents, role_prompt should be used as description if explicit description is not set.
+            # For RoleBasedAgents, role_prompt is the description if no explicit one is set.
             if 'role_based' in agent_module_path.lower() and role_prompt:
                 description = role_prompt
             else:
                 description = agent_config.get('description', f'Default description for {agent_name_in_config}')
             
-            command_parts.append(shlex.quote(description))
-            command_parts.append(f"--user_lang {shlex.quote(user_lang)}")
+            positional_args.append(shlex.quote(description))
+            optional_args.append(f"--user_lang {shlex.quote(user_lang)}")
 
+        # Add --default_target_agent for user_input_agent
         if "user_input_agent" in agent_module_path:
             try:
                 current_index = selected_team_members.index(member_key)
-
                 if current_index + 1 < len(selected_team_members):
                     next_member_key = selected_team_members[current_index + 1]
-
-                    next_agent_name = agent_library[next_member_key].get(
-                        "name", next_member_key
-                    )
-
-                    command_parts.append(
-                        f"--default_target_agent {shlex.quote(next_agent_name)}"
-                    )
-
+                    next_agent_name = agent_library[next_member_key].get("name", next_member_key)
+                    optional_args.append(f"--default_target_agent {shlex.quote(next_agent_name)}")
             except ValueError:
                 pass
 
+        # Add other optional arguments
+        optional_args.append(f"--logging_level {shlex.quote(logging_level)}")
         if "role_based" in agent_module_path.lower() and role_prompt:
-            command_parts.append(f"--role_prompt {shlex.quote(role_prompt)}")
-
+            optional_args.append(f"--role_prompt {shlex.quote(role_prompt)}")
         if llm_command:
-            command_parts.append(f"--llm_command {shlex.quote(llm_command)}")
-
+            optional_args.append(f"--llm_command {shlex.quote(llm_command)}")
         if working_dir:
-            command_parts.append(f"--working_dir {shlex.quote(working_dir)}")
+            optional_args.append(f"--working_dir {shlex.quote(working_dir)}")
 
-        command = " ".join(command_parts)
+        # Combine all parts in the correct order
+        command = " ".join([base_command] + positional_args + optional_args)
 
         pane_str = (
             f"        - {member_key.lower().replace(' ', '_')}:\n"
@@ -178,6 +162,7 @@ def generate_config(
     template_path,
     output_path,
     project_name,
+    logging_level,
 ):
     """Generates the final tmuxinator config file."""
 
@@ -186,7 +171,7 @@ def generate_config(
         shell_pane_str,
         other_agent_panes_str,
         has_gemini_cli,
-    ) = build_panes(team_name, ai_masa_project_root, venv_activate_path, project_name)
+    ) = build_panes(team_name, ai_masa_project_root, venv_activate_path, project_name, logging_level)
 
     with open(template_path, "r") as f:
         template_content = f.read()
@@ -194,7 +179,7 @@ def generate_config(
     # Replace placeholders
 
     config_content = template_content.replace(
-        "__PROJECT_ROOT__", tmuxinator_session_root
+        "__PROJECT_ROOT__", tmuxinator_memory_root
     )
 
     config_content = config_content.replace("__PROJECT_NAME__", project_name)
@@ -217,9 +202,9 @@ def generate_config(
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 8:
+    if len(sys.argv) != 9:
         print(
-            f"Usage: python {sys.argv[0]} <team_name> <ai_masa_project_root> <tmuxinator_session_root> <venv_activate_path> <template_path> <output_path> <project_name>",
+            f"Usage: python {sys.argv[0]} <team_name> <ai_masa_project_root> <tmuxinator_memory_root> <venv_activate_path> <template_path> <output_path> <project_name> <logging_level>",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -227,21 +212,21 @@ if __name__ == "__main__":
     (
         team_name,
         ai_masa_project_root,
-        tmuxinator_session_root,
+        tmuxinator_memory_root,
         venv_activate_path,
         template_path,
         output_path,
         project_name,
-    ) = sys.argv[1:8]
+        logging_level,
+    ) = sys.argv[1:9]
 
     has_gemini_cli = generate_config(
         team_name,
         ai_masa_project_root,
-        tmuxinator_session_root,
+        tmuxinator_memory_root,
         venv_activate_path,
         template_path,
         output_path,
         project_name,
+        logging_level,
     )
-    # Print the boolean flag as the last line of output
-    print(has_gemini_cli)

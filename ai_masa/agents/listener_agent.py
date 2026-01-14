@@ -70,9 +70,15 @@ class ListenerAgent(BaseAgent):
         parser.add_argument("--redis_port", type=int, default=6379, help="Redis port.")
         parser.add_argument("--redis_db", type=int, default=0, help="Redis DB.")
         parser.add_argument("--start_heartbeat", action="store_true", help="Start heartbeat for the agent.")
+        parser.add_argument("--logging_level", type=str, default="INFO", help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 
         # Parse known arguments. Pass unknown arguments as kwargs to agent_class.
         args, unknown_args = parser.parse_known_args()
+
+        # Configure logging
+        import logging
+        log_level = getattr(logging, args.logging_level.upper(), logging.INFO)
+        logging.basicConfig(level=log_level, stream=sys.stdout, format='[%(name)s][%(levelname)s] %(message)s')
 
         kwargs = {}
         for i in range(0, len(unknown_args), 2):
