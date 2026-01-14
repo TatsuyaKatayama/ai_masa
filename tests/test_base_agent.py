@@ -25,7 +25,7 @@ class TestBaseAgent(unittest.TestCase):
         self.agent = BaseAgent(
             name="TestAgent",
             description="A test agent.",
-            memory_id="project-TestAgent",
+            memory_id="TestAgent:test_project",
             memory_manager=self.mock_memory_manager_instance,
             llm_command="gemini -r {session_id}",
             llm_session_create_command="create_session_cmd",
@@ -61,16 +61,16 @@ class TestBaseAgent(unittest.TestCase):
         self.agent._on_message_received(trigger_message_json)
 
         # --- Assert ---
-        self.mock_memory_manager_instance.add_message.assert_any_call("project-TestAgent", json.loads(trigger_message_json))
-        self.mock_memory_manager_instance.get_agent_state.assert_called_once_with("project-TestAgent", "TestAgent")
+        self.mock_memory_manager_instance.add_message.assert_any_call("TestAgent:test_project", json.loads(trigger_message_json))
+        self.mock_memory_manager_instance.get_agent_state.assert_called_once_with("TestAgent:test_project", "TestAgent")
         
         create_session_call = self.mock_subprocess_run.call_args_list[0]
         self.assertEqual(create_session_call.args[0], 'create_session_cmd')
         
         expected_state = {"llm_sessions": {job_id: "new-llm-session-123"}}
-        self.mock_memory_manager_instance.update_agent_state.assert_called_once_with("project-TestAgent", "TestAgent", expected_state)
+        self.mock_memory_manager_instance.update_agent_state.assert_called_once_with("TestAgent:test_project", "TestAgent", expected_state)
 
-        self.mock_memory_manager_instance.get_history.assert_called_once_with("project-TestAgent", "TestAgent")
+        self.mock_memory_manager_instance.get_history.assert_called_once_with("TestAgent:test_project", "TestAgent")
         invoke_llm_call = self.mock_subprocess_run.call_args_list[1]
         self.assertEqual(invoke_llm_call.args[0], 'gemini -r new-llm-session-123')
         
@@ -108,7 +108,7 @@ class TestBaseAgent(unittest.TestCase):
         self.agent._on_message_received(trigger_message_json)
 
         # --- Assert ---
-        self.mock_memory_manager_instance.get_agent_state.assert_called_once_with("project-TestAgent", "TestAgent")
+        self.mock_memory_manager_instance.get_agent_state.assert_called_once_with("TestAgent:test_project", "TestAgent")
         self.mock_memory_manager_instance.update_agent_state.assert_not_called()
         self.mock_subprocess_run.assert_called_once()
 
@@ -139,7 +139,7 @@ class TestBaseAgent(unittest.TestCase):
 
         self.agent._on_message_received(trigger_message.to_json())
 
-        self.mock_memory_manager_instance.add_message.assert_called_once_with("project-TestAgent", json.loads(trigger_message.to_json()))
+        self.mock_memory_manager_instance.add_message.assert_called_once_with("TestAgent:test_project", json.loads(trigger_message.to_json()))
         self.mock_subprocess_run.assert_called_once()
         prompt = self.mock_subprocess_run.call_args.kwargs['input']
         self.assertIn(OBSERVER_INSTRUCTION, prompt)

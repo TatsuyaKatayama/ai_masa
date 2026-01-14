@@ -24,7 +24,7 @@ class TestKintaiAgent(unittest.TestCase):
         self.agent = KintaiAgent(
             name="TestKintaiAgent",
             description="An agent that tracks active agents via heartbeats.",
-            memory_id="project-TestKintaiAgent", # 必須となったmemory_idを渡す
+            memory_id="TestKintaiAgent:test_project", # 必須となったmemory_idを渡す
             memory_manager=self.mock_memory_manager_instance, # モックを渡す
             heartbeat_timeout=10
         )
@@ -40,7 +40,7 @@ class TestKintaiAgent(unittest.TestCase):
         self.assertEqual(self.agent.name, "TestKintaiAgent")
         self.assertEqual(self.agent.heartbeat_timeout, timedelta(seconds=10))
         self.assertEqual(self.agent.active_agents, {})
-        self.assertEqual(self.agent.memory_id, "project-TestKintaiAgent")
+        self.assertEqual(self.agent.memory_id, "TestKintaiAgent:test_project")
 
     @patch('ai_masa.agents.kintai_agent.datetime')
     def test_on_message_received_heartbeat_updates_active_agents(self, mock_datetime):
@@ -68,7 +68,7 @@ class TestKintaiAgent(unittest.TestCase):
         heartbeat_msg_dict = json.loads(heartbeat_msg)
         self.mock_memory_manager_instance.add_message.assert_called_once() # 受信したハートビート
         call_args = self.mock_memory_manager_instance.add_message.call_args[0]
-        self.assertEqual(call_args[0], "project-TestKintaiAgent")
+        self.assertEqual(call_args[0], "TestKintaiAgent:test_project")
         # message_idとtimestampは動的に生成されるため、ANYでマッチさせる
         call_args[1].pop('message_id')
         call_args[1].pop('timestamp')
@@ -107,10 +107,10 @@ class TestKintaiAgent(unittest.TestCase):
 
         # 受信した問い合わせメッセージが自身の履歴に追加されたことを確認
         query_msg_dict = json.loads(query_msg)
-        self.mock_memory_manager_instance.add_message.assert_any_call("project-TestKintaiAgent", query_msg_dict)
+        self.mock_memory_manager_instance.add_message.assert_any_call("TestKintaiAgent:test_project", query_msg_dict)
         # 送信した応答メッセージも自身の履歴に追加されたことを確認
         self.mock_memory_manager_instance.add_message.assert_any_call(
-            "project-TestKintaiAgent", 
+            "TestKintaiAgent:test_project", 
             unittest.mock.ANY # ここは動的に生成されるメッセージなのでANYで対応
         )
         # add_messageが計2回呼ばれたことを確認 (受信と送信)

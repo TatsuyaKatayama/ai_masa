@@ -8,6 +8,7 @@ import sys
 import tempfile
 import shutil
 import subprocess # 追加
+import uuid # 追加
 
 # パスを追加してモジュールをインポート可能にする
 # sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -88,7 +89,7 @@ class TestGeminiCliAgentIntegration(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
 
         # BaseAgentのmemory_idは必須なので、一意なIDを生成して渡す
-        self.memory_id = f"integration-memory-{self.agent_name}-{os.getpid()}-{time.time_ns()}"
+        self.memory_id = f"{self.agent_name}:integration-test-{str(uuid.uuid4())}"
 
         # テスト対象のエージェントをインスタンス化
         self.agent = GeminiCliAgent(

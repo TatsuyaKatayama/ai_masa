@@ -27,7 +27,7 @@ class TestLoggingAgent(unittest.TestCase):
         self.agent = LoggingAgent(
             name="TestLogger",
             description="An agent that logs all messages.",
-            memory_id="project-TestLogger", # 必須となったmemory_idを渡す
+            memory_id="TestLogger:test_project", # 必須となったmemory_idを渡す
             memory_manager=self.mock_memory_manager_instance # モックを渡す
         )
 
