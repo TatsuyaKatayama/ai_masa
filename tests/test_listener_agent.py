@@ -32,7 +32,7 @@ class TestListenerAgent(unittest.TestCase):
         self.agent = ConcreteListenerAgent(
             name="TestListener",
             description="A test listener agent.",
-            memory_id="project-TestListener",
+            memory_id="TestListener:test_project",
             memory_manager=self.mock_memory_manager_instance
         )
 
@@ -54,7 +54,7 @@ class TestListenerAgent(unittest.TestCase):
             mock_think.assert_called_once()
             
             # MemoryManagerにメッセージが追加されたことを確認
-            self.mock_memory_manager_instance.add_message.assert_called_once_with("project-TestListener", json.loads(trigger_message))
+            self.mock_memory_manager_instance.add_message.assert_called_once_with("TestListener:test_project", json.loads(trigger_message))
 
             # メッセージが処理されたことを確認
             self.assertEqual(len(self.agent.handled_messages), 1)

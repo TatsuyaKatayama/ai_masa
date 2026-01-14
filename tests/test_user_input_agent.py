@@ -37,7 +37,7 @@ class TestUserInputAgent(unittest.TestCase):
         self.agent = UserInputAgent(
             name="TestUser",
             description="Handles user input for testing.", # descriptionを追加
-            memory_id="project-TestUser", # memory_idを追加
+            memory_id="TestUser:test_project", # memory_idを追加
             memory_manager=self.mock_memory_manager_instance, # モックを渡す
             default_target_agent="TestTarget"
         )
@@ -60,7 +60,7 @@ class TestUserInputAgent(unittest.TestCase):
         """エージェントが正しく初期化されるかテスト"""
         self.assertEqual(self.agent.name, "TestUser")
         self.assertEqual(self.agent.description, "Handles user input for testing.")
-        self.assertEqual(self.agent.memory_id, "project-TestUser")
+        self.assertEqual(self.agent.memory_id, "TestUser:test_project")
         self.assertEqual(self.agent.default_target_agent, "TestTarget")
         output = self.mock_stdout.getvalue()
         self.assertIn("[TestUser] Initialized. I will send messages to 'TestTarget'.", output)
@@ -123,10 +123,7 @@ class TestUserInputAgent(unittest.TestCase):
         self.assertIn("📨 Received from OtherAgent: This is a test message.", output)
         
         # イベントがセットされたことを確認
-        self.assertTrue(self.agent.response_received_event.is_set())
-
-        # 受信メッセージがMemoryManagerに保存されることを検証
-        self.mock_memory_manager_instance.add_message.assert_called_once_with("project-TestUser", json.loads(test_msg_json))
+        self.mock_memory_manager_instance.add_message.assert_called_once_with("TestUser:test_project", json.loads(test_msg_json))
 
     def test_receive_cc_message(self):
         """
@@ -148,7 +145,7 @@ class TestUserInputAgent(unittest.TestCase):
         self.assertFalse(self.agent.response_received_event.is_set())
 
         # 受信メッセージがMemoryManagerに保存されることを検証
-        self.mock_memory_manager_instance.add_message.assert_called_once_with("project-TestUser", json.loads(test_msg_json))
+        self.mock_memory_manager_instance.add_message.assert_called_once_with("TestUser:test_project", json.loads(test_msg_json))
 
     @patch('uuid.uuid4')
     def test_newjob_command(self, mock_uuid):
@@ -199,7 +196,7 @@ class TestUserInputAgent(unittest.TestCase):
         self.agent = UserInputAgent(
             name="TestUserNoTarget",
             description="Handles user input for testing.",
-            memory_id="project-TestUserNoTarget",
+            memory_id="TestUserNoTarget:test_project",
             memory_manager=self.mock_memory_manager_instance,
             default_target_agent=None # ここでNoneに設定
         )

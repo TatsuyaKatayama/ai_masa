@@ -28,7 +28,7 @@ class TestGeminiCliAgent(unittest.TestCase):
         self.mock_memory_manager_instance = self.MockMemoryManager.return_value
 
         self.agent_name = "TestGeminiAgent"
-        self.memory_id = f"project-{self.agent_name}"
+        self.memory_id = f"{self.agent_name}:test_project"
         self.description = "You are an intelligent AI assistant equipped with the Gemini CLI."
 
         self.agent = GeminiCliAgent(
@@ -165,7 +165,7 @@ class TestGeminiCliAgent(unittest.TestCase):
             agent = GeminiCliAgent(
                 name="TempGeminiAgent",
                 description="Temp agent.",
-                memory_id="project-TempGeminiAgent",
+                memory_id="TempGeminiAgent:test_project",
                 memory_manager=self.mock_memory_manager_instance,
                 working_dir=tmpdir,
                 start_heartbeat=False
@@ -187,7 +187,7 @@ class TestGeminiCliAgent(unittest.TestCase):
             agent = GeminiCliAgent(
                 name="TempGeminiAgent2",
                 description="Temp agent.",
-                memory_id="project-TempGeminiAgent2",
+                memory_id="TempGeminiAgent2:test_project",
                 memory_manager=self.mock_memory_manager_instance,
                 working_dir=tmpdir,
                 start_heartbeat=False

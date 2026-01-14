@@ -28,14 +28,18 @@ class TestGenerateTmuxConfig(unittest.TestCase):
                     'name': 'Coder',
                     'type': 'role_based_gemini_cli_agent.RoleBasedGeminiCliAgent',
                     'user_lang': 'Japanese',
-                    'role_prompt': 'You are a professional programmer.'
+                    'role_prompt': 'You are a professional programmer.',
+                    'working_dir': 'works/Coder/{project_name}',
+                    'redis_db': 3
                 },
                 'foamer': {
                     'name': 'Foamer',
                     'type': 'role_based_gemini_cli_agent.RoleBasedGeminiCliAgent',
                     'user_lang': 'English',
                     'role_prompt': 'You are an expert OpenFOAM user.',
-                    'llm_command': 'gemini -y --resume {session_id} --output-format json'
+                    'llm_command': 'gemini -y --resume {session_id} --output-format json',
+                    'working_dir': 'works/Foamer/{project_name}',
+                    'redis_db': 1
                 }
             }, f)
 
@@ -77,11 +81,12 @@ class TestGenerateTmuxConfig(unittest.TestCase):
         generate_config(
             team_name='test_team',
             ai_masa_project_root=self.project_root,
-            tmuxinator_session_root=self.project_root,
+            tmuxinator_memory_root=self.project_root,
             venv_activate_path=self.venv_path,
             template_path=self.template_path,
             output_path=self.output_path,
-            project_name='test_project'
+            project_name='test_project',
+            logging_level='INFO'
         )
 
         # Verify the output file exists
@@ -96,16 +101,46 @@ class TestGenerateTmuxConfig(unittest.TestCase):
         
         # Check for user_proxy pane
         self.assertIn("- user_proxy:", content)
-        self.assertIn(f"python -m ai_masa.agents.user_input_agent UserProxy --default_target_agent Coder", content)
+        expected_user_proxy_command = shlex.join([
+            "python", "-m", "ai_masa.agents.user_input_agent",
+            "UserProxy",
+            f"--memory_id", "UserProxy:test_project",
+            f"--redis_db", "0",
+            f"--working_dir", "works/UserProxy/test_project",
+            f"--default_target_agent", "Coder",
+            f"--logging_level", "INFO"
+        ])
+        self.assertIn(expected_user_proxy_command, content)
 
         # Check for coder pane (and its command details)
         self.assertIn("- coder:", content)
-        expected_coder_command = "python -m ai_masa.agents.role_based_gemini_cli_agent Coder --memory_id test_project-Coder 'You are a professional programmer.' --user_lang Japanese --role_prompt 'You are a professional programmer.'"
+        expected_coder_command = shlex.join([
+            "python", "-m", "ai_masa.agents.role_based_gemini_cli_agent",
+            "Coder",
+            "You are a professional programmer.", # Positional arg
+            f"--memory_id", "Coder:test_project",
+            f"--redis_db", "3",
+            f"--working_dir", "works/Coder/test_project",
+            f"--user_lang", "Japanese",
+            f"--logging_level", "INFO", # Moved here
+            f"--role_prompt", "You are a professional programmer."
+        ])
         self.assertIn(expected_coder_command, content)
 
         # Check for foamer pane (and its command details including llm_command)
         self.assertIn("- foamer:", content)
-        expected_foamer_command = "python -m ai_masa.agents.role_based_gemini_cli_agent Foamer --memory_id test_project-Foamer 'You are an expert OpenFOAM user.' --user_lang English --role_prompt 'You are an expert OpenFOAM user.' --llm_command 'gemini -y --resume {session_id} --output-format json'"
+        expected_foamer_command = shlex.join([
+            "python", "-m", "ai_masa.agents.role_based_gemini_cli_agent",
+            "Foamer",
+            "You are an expert OpenFOAM user.", # Positional arg
+            f"--memory_id", "Foamer:test_project",
+            f"--redis_db", "1",
+            f"--working_dir", "works/Foamer/test_project",
+            f"--user_lang", "English",
+            f"--logging_level", "INFO", # Moved here
+            f"--role_prompt", "You are an expert OpenFOAM user.",
+            f"--llm_command", "gemini -y --resume {session_id} --output-format json"
+        ])
         self.assertIn(expected_foamer_command, content)
 
 

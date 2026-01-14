@@ -74,9 +74,12 @@ class TestFoamerAgentResponse(unittest.TestCase):
         # Dynamically get the agent class (RoleBasedGeminiCliAgent)
         agent_class = globals()[agent_type]
 
+        # Remove 'working_dir' from config if it exists, to avoid duplicate argument error
+        foamer_config.pop('working_dir', None)
+
         # Instantiate the agent
         foamer_agent = agent_class(
-            memory_id=f"test-memory-{foamer_config['name']}", # Add memory_id
+            memory_id=f"{foamer_config['name']}:test-project", # Add memory_id
             memory_manager=MagicMock(), # Mock memory manager
             **foamer_config,
             start_heartbeat=False,

@@ -32,7 +32,7 @@ class TestRoleBasedAgent(unittest.TestCase):
         agent_name = "TestRoleAgent"
         description_text = "Specific description"
         role_prompt_text = "You are a test agent."
-        memory_id = "project-TestRoleAgent"
+        memory_id = f"{agent_name}:test_project"
         
         agent = RoleBasedAgent(
             name=agent_name,
@@ -61,7 +61,7 @@ class TestRoleBasedAgent(unittest.TestCase):
         """
         agent_name = "TestRoleAgent2"
         role_prompt_text = "Another test role."
-        memory_id = "project-TestRoleAgent2"
+        memory_id = f"{agent_name}:test_project"
 
         agent = RoleBasedAgent(
             name=agent_name,
@@ -78,7 +78,7 @@ class TestRoleBasedAgent(unittest.TestCase):
         Test that if neither description nor role_prompt is given, a default description is used.
         """
         agent_name = "TestRoleAgent3"
-        memory_id = "project-TestRoleAgent3"
+        memory_id = f"{agent_name}:test_project"
 
         agent = RoleBasedAgent(
             name=agent_name,

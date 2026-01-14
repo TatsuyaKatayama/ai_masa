@@ -39,7 +39,7 @@ class TestRoleBasedGeminiCliAgent(unittest.TestCase):
         agent_name = "TestRoleCliAgent"
         description_text = "A test CLI agent."
         role_prompt_text = "You are a test CLI agent." # This will be stored but not used in the main prompt
-        memory_id = f"project-{agent_name}"
+        memory_id = f"{agent_name}:test_project"
         
         agent = RoleBasedGeminiCliAgent(
             name=agent_name,
@@ -66,7 +66,7 @@ class TestRoleBasedGeminiCliAgent(unittest.TestCase):
         description_text = "An agent with a custom LLM command."
         role_prompt_text = "You are an agent with a custom LLM command."
         custom_llm_command = "my_custom_llm_cli --model custom-model --param value"
-        memory_id = f"project-{agent_name}"
+        memory_id = f"{agent_name}:test_project"
         
         agent = RoleBasedGeminiCliAgent(
             name=agent_name,
@@ -92,7 +92,7 @@ class TestRoleBasedGeminiCliAgent(unittest.TestCase):
         """
         agent_name = "TestRoleCliAgentNoDesc"
         role_prompt_text = "Only role prompt provided."
-        memory_id = f"project-{agent_name}"
+        memory_id = f"{agent_name}:test_project"
 
         agent = RoleBasedGeminiCliAgent(
             name=agent_name,
@@ -111,7 +111,7 @@ class TestRoleBasedGeminiCliAgent(unittest.TestCase):
         Test that if neither description nor role_prompt is given, a default is used.
         """
         agent_name = "TestRoleCliAgentDefaultDesc"
-        memory_id = f"project-{agent_name}"
+        memory_id = f"{agent_name}:test_project"
 
         agent = RoleBasedGeminiCliAgent(
             name=agent_name,

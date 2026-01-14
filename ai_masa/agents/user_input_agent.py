@@ -52,12 +52,13 @@ class UserInputAgent(BaseAgent):
             msg = Message.from_json(message_json)
             # BaseAgentの履歴保存ロジックを利用
             super()._on_message_received(message_json)
-
-            job_id = msg.job_id or "default"
             
-            # 自分宛のメッセージであれば、入力ブロックを解除
+            # ユーザーへの表示
             if msg.to_agent == self.name:
-                self.response_received_event.set()
+                print(f"📨 Received from {msg.from_agent}: {msg.content}")
+                self.response_received_event.set() # 応答があったことを通知
+            elif self.name in msg.cc_agents:
+                print(f"👀 (CC) Saw message from {msg.from_agent} to {msg.to_agent}: {msg.content}")
 
         except Exception as e:
             print(f"[{self.name}] Error in _on_message_received: {e}")

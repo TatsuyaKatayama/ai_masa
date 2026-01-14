@@ -82,14 +82,34 @@ def build_panes(team_name, ai_masa_project_root, venv_activate_path, project_nam
 
         llm_command = agent_config.get("llm_command")
 
-        working_dir = agent_config.get("working_dir")
+        # Retrieve working_dir and redis_db from agent_config
+        agent_working_dir_config = agent_config.get("working_dir")
+        redis_db = agent_config.get("redis_db", 0) # Default to 0 if not specified
 
         # Generate a unique memory ID for each agent within the project
-        memory_id = f"{project_name}-{agent_name_in_config}"
+        # Changed to Agent-centric: {agent_name}:{project_name}
+        memory_id = f"{agent_name_in_config}:{project_name}"
 
         base_command = f"python -m ai_masa.agents.{agent_module_path}"
         positional_args = [shlex.quote(agent_name_in_config)]
         optional_args = [f"--memory_id {shlex.quote(memory_id)}"]
+
+        # Add --redis_db argument
+        optional_args.append(f"--redis_db {shlex.quote(str(redis_db))}")
+
+        # Determine the final working directory
+        final_working_dir_relative = ""
+        if agent_working_dir_config:
+            # If specified in config, use it and substitute {project_name}
+            final_working_dir_relative = agent_working_dir_config.replace("{project_name}", project_name)
+        else:
+            # If not specified, default to works/{agent_name}/{project_name}
+            final_working_dir_relative = f"works/{agent_name_in_config}/{project_name}"
+
+        # Ensure the directory exists relative to ai_masa_project_root
+        full_working_dir_path = os.path.join(ai_masa_project_root, final_working_dir_relative)
+        os.makedirs(full_working_dir_path, exist_ok=True) # Create directory if it doesn't exist
+        optional_args.append(f"--working_dir {shlex.quote(final_working_dir_relative)}")
 
         # Add description and user_lang for agents that are not user_input_agent
         if 'user_input_agent' not in agent_module_path:
@@ -119,8 +139,6 @@ def build_panes(team_name, ai_masa_project_root, venv_activate_path, project_nam
             optional_args.append(f"--role_prompt {shlex.quote(role_prompt)}")
         if llm_command:
             optional_args.append(f"--llm_command {shlex.quote(llm_command)}")
-        if working_dir:
-            optional_args.append(f"--working_dir {shlex.quote(working_dir)}")
 
         # Combine all parts in the correct order
         command = " ".join([base_command] + positional_args + optional_args)
@@ -157,7 +175,7 @@ def build_panes(team_name, ai_masa_project_root, venv_activate_path, project_nam
 def generate_config(
     team_name,
     ai_masa_project_root,
-    tmuxinator_session_root,
+    tmuxinator_memory_root,
     venv_activate_path,
     template_path,
     output_path,

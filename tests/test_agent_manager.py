@@ -39,7 +39,7 @@ class TestAgentManager(unittest.TestCase):
         self.manager = AgentManager(
             name="AgentManager",
             description="I am an agent manager, monitoring the status of other agents.",
-            memory_id="project-AgentManager", # 必須となったmemory_idを渡す
+            memory_id="AgentManager:test_project", # 必須となったmemory_idを渡す
             memory_manager=self.mock_memory_manager_instance # モックを渡す
         )
 
@@ -83,7 +83,7 @@ class TestAgentManager(unittest.TestCase):
         # message_idとtimestampは動的に生成されるため、ANYでマッチさせる
         self.mock_memory_manager_instance.add_message.assert_called_once()
         call_args = self.mock_memory_manager_instance.add_message.call_args[0]
-        self.assertEqual(call_args[0], "project-AgentManager")
+        self.assertEqual(call_args[0], "AgentManager:test_project")
         # message_id と timestamp を除外して比較
         call_args[1].pop('message_id')
         call_args[1].pop('timestamp')
