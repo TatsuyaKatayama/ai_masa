@@ -73,3 +73,11 @@ opencode_gemini:
   working_dir: "works/OpencodeAgent/{project_name}"
   redis_db: 3
 
+opencode_openai_gpt4o:
+  type: opencode_agent.OpencodeAgent
+  name: OpencodeOpenAIGPT4o
+  user_lang: English
+  model: openai/gpt-4o
+  working_dir: "works/OpencodeAgent/{project_name}"
+  redis_db: 4
+

@@ -2,137 +2,169 @@ import unittest
 from unittest.mock import patch, MagicMock, call
 import subprocess
 import json
-from ai_masa.agents.opencode_agent import OpencodeAgent
+import logging
+import os
 
-class TestOpencodeAgent(unittest.TestCase):
+# Mute the agent's own logging to keep test output clean
+logging.getLogger('ai_masa.agents.opencode_agent').setLevel(logging.CRITICAL)
+
+from ai_masa.agents.opencode_agent import OpencodeAgent
+from ai_masa.models.message import Message
+
+class TestOpencodeAgentNew(unittest.TestCase):
 
     def setUp(self):
-        # We patch 'subprocess.run' to mock shell command execution
-        self.mock_subprocess_run = patch('subprocess.run').start()
+        # Patch dependencies that are not the focus of this test
+        patcher_redis = patch('ai_masa.agents.base_agent.RedisBroker')
+        patcher_heartbeat = patch('ai_masa.agents.base_agent.BaseAgent._start_heartbeat')
         
-        # We patch 'RedisBroker' to prevent actual network connections during unit tests
-        self.mock_redis_broker = patch('ai_masa.agents.base_agent.RedisBroker').start()
+        self.mock_redis_broker = patcher_redis.start()
+        self.mock_start_heartbeat = patcher_heartbeat.start()
         
-        # We patch '_start_heartbeat' to prevent the background thread from starting
-        self.mock_start_heartbeat = patch('ai_masa.agents.base_agent.BaseAgent._start_heartbeat').start()
-        
-        self.addCleanup(patch.stopall)
+        self.addCleanup(patcher_redis.stop)
+        self.addCleanup(patcher_heartbeat.stop)
 
-    def test_init_default_llm_command(self):
-        agent = OpencodeAgent(name="TestAgent", memory_id="test_mem")
-        expected_command = "docker exec opencode-cli opencode -m google/gemini-2.5-flash run --session {session_id}"
-        self.assertEqual(agent.llm_command, expected_command)
-        self.assertEqual(agent.model, "google/gemini-2.5-flash")
+    @patch('ai_masa.agents.opencode_agent.load_env_file')
+    def test_env_file_loaded_on_init(self, mock_load_env_file):
+        # Arrange: Mock a successful _initialize_session to allow OpencodeAgent to instantiate
+        # Patch subprocess.run that is called inside _initialize_session
+        with patch('subprocess.run') as mock_subprocess_run:
+            mock_subprocess_run.return_value = MagicMock(
+                spec=subprocess.CompletedProcess,
+                stdout=json.dumps({"sessionID": "ses_mock_id", "response": "Hello"}),
+                stderr="",
+                returncode=0
+            )
 
-    def test_init_with_custom_model(self):
-        agent = OpencodeAgent(name="TestAgent", memory_id="test_mem", model="google/gemini-pro")
-        expected_command = "docker exec opencode-cli opencode -m google/gemini-pro run --session {session_id}"
-        self.assertEqual(agent.llm_command, expected_command)
-        self.assertEqual(agent.model, "google/gemini-pro")
+            # Act
+            agent = OpencodeAgent(name="TestAgent", memory_id="test_mem")
 
-    def test_init_with_model_and_spaces_quoted(self):
-        # Although opencode models don't typically have spaces, testing shlex.quote
-        agent = OpencodeAgent(name="TestAgent", memory_id="test_mem", model="a model/with spaces")
-        expected_command = "docker exec opencode-cli opencode -m 'a model/with spaces' run --session {session_id}"
-        self.assertEqual(agent.llm_command, expected_command)
+            # Assert that load_env_file was called
+            mock_load_env_file.assert_called_once()
 
-    def test_create_llm_session_success(self):
-        # Mock the two subprocess calls
-        mock_init_run_result = MagicMock(spec=subprocess.CompletedProcess, returncode=0, stdout="", stderr="")
-        mock_session_list_result = MagicMock(spec=subprocess.CompletedProcess, returncode=0)
-        
-        mock_sessions_output = json.dumps([
-            {"id": "ses_newest_session", "title": "Initialize session", "updated": 1700000002},
-            {"id": "ses_older_session", "title": "Some other task", "updated": 1700000001}
-        ])
-        mock_session_list_result.stdout = mock_sessions_output
-        
-        self.mock_subprocess_run.side_effect = [
-            mock_init_run_result, # First call is the init run
-            mock_session_list_result  # Second call is the session list
-        ]
+            # Assert that load_env_file was called with the correct path
+            called_path = mock_load_env_file.call_args[0][0]
+            path_parts = os.path.normpath(called_path).split(os.sep)
+            self.assertEqual(path_parts[-2:], ['ai_masa', '.env.example'])
 
-        agent = OpencodeAgent(name="TestAgent", memory_id="test_mem")
-        session_id = agent._create_llm_session(job_id="test_job")
-
-        # Verify the session ID is the first one from the list
-        self.assertEqual(session_id, "ses_newest_session")
-
-        # Verify the calls to subprocess.run
-        self.assertEqual(self.mock_subprocess_run.call_count, 2)
-        
-        # Check the first call (init)
-        expected_init_command_args = call(
-            "docker exec opencode-cli opencode -m google/gemini-2.5-flash run 'Initialize session for ID retrieval'",
-            shell=True, capture_output=True, text=True, check=True, timeout=80, cwd=None
+    @patch('subprocess.run')
+    def test_initialize_session_success(self, mock_subprocess_run):
+        # Arrange
+        session_id = "ses_12345"
+        mock_stdout = json.dumps({"sessionID": session_id, "response": "Hello"})
+        mock_subprocess_run.return_value = MagicMock(
+            spec=subprocess.CompletedProcess,
+            stdout=mock_stdout,
+            stderr="",
+            returncode=0
         )
-        self.assertEqual(self.mock_subprocess_run.call_args_list[0], expected_init_command_args)
 
-        # Check the second call (session list)
-        expected_session_list_command_args = call(
-            "docker exec opencode-cli opencode session list --format json",
-            shell=True, capture_output=True, text=True, check=True, cwd=None
+        # Act
+        agent = OpencodeAgent(name="TestAgent", memory_id="test_mem", model="test/model")
+
+        # Assert
+        self.assertEqual(agent.session_id, session_id)
+        self.assertEqual(agent.llm_command, f"opencode -m test/model run -s {session_id}")
+        
+        expected_command = "opencode -m test/model run --format json"
+        mock_subprocess_run.assert_called_once()
+        # Accessing the call arguments correctly
+        called_args, called_kwargs = mock_subprocess_run.call_args
+        self.assertEqual(called_args[0], expected_command)
+        self.assertTrue(called_kwargs.get('shell'))
+
+
+    @patch('subprocess.run')
+    def test_initialize_session_no_session_id_in_output(self, mock_subprocess_run):
+        # Arrange
+        mock_stdout = json.dumps({"response": "Hello, this is not a session init response"})
+        mock_subprocess_run.return_value = MagicMock(
+            spec=subprocess.CompletedProcess,
+            stdout=mock_stdout,
+            stderr="",
+            returncode=0
         )
-        self.assertEqual(self.mock_subprocess_run.call_args_list[1], expected_session_list_command_args)
 
-    def test_create_llm_session_init_command_fails(self):
-        # If the first command to create a session fails, the whole process should fail.
-        self.mock_subprocess_run.side_effect = subprocess.CalledProcessError(1, "init command failed")
+        # Act & Assert
+        with self.assertRaisesRegex(RuntimeError, "Failed to initialize Opencode session: sessionID not found."):
+            OpencodeAgent(name="TestAgent", memory_id="test_mem")
 
-        agent = OpencodeAgent(name="TestAgent", memory_id="test_mem")
-        session_id = agent._create_llm_session(job_id="test_job")
+    @patch('subprocess.run')
+    def test_initialize_session_subprocess_error(self, mock_subprocess_run):
+        # Arrange
+        mock_subprocess_run.side_effect = subprocess.CalledProcessError(
+            returncode=1, cmd="opencode run", stderr="Something went wrong"
+        )
+
+        # Act & Assert
+        with self.assertRaisesRegex(RuntimeError, "Failed to initialize Opencode session"):
+            OpencodeAgent(name="TestAgent", memory_id="test_mem")
+
+    def test_think_and_respond_session_not_initialized(self):
+        # Arrange
+        # This test requires bypassing the __init__'s call to _initialize_session
+        with patch.object(OpencodeAgent, '_initialize_session', return_value=None):
+            agent = OpencodeAgent(name="TestAgent", memory_id="test_mem")
+            agent.session_id = None # Ensure session is not set
+            
+            # Mock the logger to capture error messages
+            with self.assertLogs('ai_masa.agents.opencode_agent', level='ERROR') as cm:
+                # Act
+                agent.think_and_respond(
+                    trigger_msg=Message(from_agent="user", content="hello", job_id="test_job"),
+                    job_id="test_job"
+                )
+                # Assert
+                self.assertIn("Cannot handle message; persistent session not initialized. Aborting.", cm.output[0])
+
+    @patch('subprocess.run')
+    def test_invoke_llm_success(self, mock_subprocess_run):
+        # Arrange
+        # First, initialize the agent successfully to set up the llm_command
+        init_session_id = "ses_init_123"
+        mock_init_stdout = json.dumps({"sessionID": init_session_id})
         
-        self.assertIsNone(session_id)
-        self.assertEqual(self.mock_subprocess_run.call_count, 1)
-
-    def test_create_llm_session_list_command_fails(self):
-        # If the session list command fails, the process should fail.
-        self.mock_subprocess_run.side_effect = [
-            MagicMock(spec=subprocess.CompletedProcess, returncode=0, stdout="", stderr=""), # Init command succeeds
-            subprocess.CalledProcessError(1, "session list command failed")
+        # Second, set up the mock for the _invoke_llm call
+        llm_response = '{"to_agent": "user", "content": "This is the response."}'
+        
+        # The side_effect will apply to all calls to subprocess.run
+        mock_subprocess_run.side_effect = [
+            MagicMock(stdout=mock_init_stdout, returncode=0), # For _initialize_session
+            MagicMock(stdout=llm_response, returncode=0)      # For _invoke_llm
         ]
 
-        agent = OpencodeAgent(name="TestAgent", memory_id="test_mem")
-        session_id = agent._create_llm_session(job_id="test_job")
+        agent = OpencodeAgent(name="TestAgent", memory_id="test_mem", model="test/model")
         
-        self.assertIsNone(session_id)
-        self.assertEqual(self.mock_subprocess_run.call_count, 2)
+        # Act
+        response = agent._invoke_llm(prompt="User prompt", llm_session_id="ignored_id")
 
-    def test_create_llm_session_empty_list(self):
-        # If session list returns an empty JSON array
-        self.mock_subprocess_run.side_effect = [
-            MagicMock(spec=subprocess.CompletedProcess, returncode=0, stdout="", stderr=""), # Init command succeeds
-            MagicMock(spec=subprocess.CompletedProcess, returncode=0, stdout="[]")
+        # Assert
+        self.assertEqual(response, llm_response)
+        
+        # Check the second call to subprocess.run which is the one from _invoke_llm
+        self.assertEqual(mock_subprocess_run.call_count, 2)
+        expected_llm_command = f"opencode -m test/model run -s {init_session_id}"
+        invoked_command = mock_subprocess_run.call_args_list[1].args[0]
+        self.assertEqual(invoked_command, expected_llm_command)
+
+    @patch('subprocess.run')
+    def test_invoke_llm_subprocess_error(self, mock_subprocess_run):
+        # Arrange
+        init_session_id = "ses_init_456"
+        mock_init_stdout = json.dumps({"sessionID": init_session_id})
+        
+        mock_subprocess_run.side_effect = [
+            MagicMock(stdout=mock_init_stdout, returncode=0),
+            subprocess.CalledProcessError(1, "llm command failed", stderr="LLM Error")
         ]
-
-        agent = OpencodeAgent(name="TestAgent", memory_id="test_mem")
-        session_id = agent._create_llm_session(job_id="test_job")
         
-        self.assertIsNone(session_id)
-        self.assertEqual(self.mock_subprocess_run.call_count, 2)
-
-    def test_create_llm_session_invalid_json(self):
-        # If session list returns invalid JSON
-        self.mock_subprocess_run.side_effect = [
-            MagicMock(spec=subprocess.CompletedProcess, returncode=0, stdout="", stderr=""), # Init command succeeds
-            MagicMock(spec=subprocess.CompletedProcess, returncode=0, stdout="invalid json")
-        ]
-
         agent = OpencodeAgent(name="TestAgent", memory_id="test_mem")
-        session_id = agent._create_llm_session(job_id="test_job")
-        
-        self.assertIsNone(session_id)
-        self.assertEqual(self.mock_subprocess_run.call_count, 2)
 
-    def test_create_llm_session_missing_id_in_first_session(self):
-        # If the first session object in the list doesn't have an 'id' key
-        self.mock_subprocess_run.side_effect = [
-            MagicMock(spec=subprocess.CompletedProcess, returncode=0, stdout="", stderr=""), # Init command succeeds
-            MagicMock(spec=subprocess.CompletedProcess, returncode=0, stdout=json.dumps([{"title": "No ID here"}]))
-        ]
+        # Act
+        response = agent._invoke_llm(prompt="User prompt", llm_session_id="ignored_id")
 
-        agent = OpencodeAgent(name="TestAgent", memory_id="test_mem")
-        session_id = agent._create_llm_session(job_id="test_job")
-        
-        self.assertIsNone(session_id)
-        self.assertEqual(self.mock_subprocess_run.call_count, 2)
+        # Assert
+        self.assertIsNone(response)
+
+if __name__ == "__main__":
+    unittest.main()

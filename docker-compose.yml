@@ -14,14 +14,3 @@ services:
       timeout: 5s
       retries: 5
 
-  opencode-cli:
-    image: ghcr.io/anomalyco/opencode
-    container_name: opencode-cli
-    volumes:
-      - ./config/opencode:/root/.config/opencode
-      - ./works:/app/works
-    env_file:
-      - .env
-    entrypoint: ""
-    tty: true
-    command: tail -f /dev/null

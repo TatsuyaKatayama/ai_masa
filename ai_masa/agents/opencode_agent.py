@@ -9,6 +9,7 @@ from typing import Optional, List, Dict, Any
 
 from .base_agent import BaseAgent
 from ..models.message import Message
+from ai_masa.comms.load_env import load_env_file # Import load_env_file
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,12 @@ class OpencodeAgent(BaseAgent):
                  working_dir: Optional[str] = None, 
                  model: str = "google/gemini-2.5-flash", **kwargs):
         
+        # Load .env file at agent initialization
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # Assuming .env is in the 'ai_masa' root, which is two levels up from this file
+        env_file_path = os.path.join(current_dir, '..', '..', '.env.example')
+        load_env_file(env_file_path)
+
         final_description = description if description is not None else \
             "You are an intelligent AI assistant powered by the Opencode CLI. Your task is to understand user messages and generate concise and accurate responses using your configured LLM backend."
 
@@ -57,7 +64,7 @@ class OpencodeAgent(BaseAgent):
         logger.debug(f"[{self.name}] Initializing persistent Opencode session.")
         try:
             model_flag = f"-m {shlex.quote(self.model)}" if self.model else ""
-            init_command = f"docker exec -i opencode-cli opencode {model_flag} run --format json"
+            init_command = f"opencode {model_flag} run --format json"
             prompt = self.role_prompt
             logger.debug(f"[{self.name}] Running session init command: {init_command}")
 
@@ -82,7 +89,7 @@ class OpencodeAgent(BaseAgent):
             if session_id:
                 self.session_id = session_id
                 logger.info(f"[{self.name}] Persistent session ID retrieved: {self.session_id}")
-                self.llm_command = f"docker exec -i opencode-cli opencode {model_flag} run -s {shlex.quote(self.session_id)}"
+                self.llm_command = f"opencode {model_flag} run -s {shlex.quote(self.session_id)}"
                 logger.debug(f"[{self.name}] LLM command updated to: {self.llm_command}")
             else:
                 logger.critical(f"[{self.name}] Could not find sessionID in the output. Full output: {process.stdout.strip()}")
