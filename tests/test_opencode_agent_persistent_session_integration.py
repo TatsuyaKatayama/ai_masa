@@ -16,26 +16,27 @@ class TestOpencodeAgentPersistentSessionIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """
-        Starts Docker Compose services, waits for them to be ready,
-        and skips tests if they don't become healthy.
+        Starts Redis service, checks for local opencode,
+        and skips tests if dependencies are not ready.
         """
         logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='[%(name)s][%(levelname)s] %(message)s')
         
-        print("\nStarting Docker Compose services for OpencodeAgent persistent session integration tests...")
+        print("\nStarting Redis service for OpencodeAgent persistent session integration tests...")
         cls.compose_file_path = os.path.join(os.path.dirname(__file__), '..', 'docker-compose.yml')
         if not os.path.exists(cls.compose_file_path):
             raise FileNotFoundError(f"docker-compose.yml not found at {cls.compose_file_path}")
 
         try:
             subprocess.run(["docker", "compose", "-f", cls.compose_file_path, "down"], capture_output=True, timeout=60)
+            # Only start the redis service
             subprocess.run(
-                ["docker", "compose", "-f", cls.compose_file_path, "up", "-d"],
+                ["docker", "compose", "-f", cls.compose_file_path, "up", "-d", "ai-masa-redis"],
                 check=True, capture_output=True, timeout=120
             )
             cls.wait_for_redis()
-            cls.wait_for_opencode() # This will now skip the test if it fails
+            cls.check_local_opencode() # Check for local, functional opencode
         except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
-            raise unittest.SkipTest(f"Failed to start Docker Compose services. Skipping tests. Error: {e}")
+            raise unittest.SkipTest(f"Failed to start services or find opencode. Skipping tests. Error: {e}")
         except ConnectionError as e:
              raise unittest.SkipTest(str(e))
 
@@ -60,22 +61,21 @@ class TestOpencodeAgentPersistentSessionIntegration(unittest.TestCase):
         raise ConnectionError("Could not connect to Redis container after multiple retries. Skipping tests.")
     
     @classmethod
-    def wait_for_opencode(cls, retries=15, delay=5):
-        print("Waiting for opencode-cli container to be functionally ready...")
-        for i in range(retries):
-            try:
-                # Perform a functional check.
-                result = subprocess.run(
-                    ["docker", "exec", "opencode-cli", "opencode", "run", "-m", "google/gemini-2.5-flash", "What is 2+2?"],
-                    check=True, capture_output=True, text=True, timeout=30
-                )
-                if "4" in result.stdout:
-                    print(f"opencode-cli is ready and responded correctly.")
-                    return
-            except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-                print(f"opencode-cli not ready yet, retrying ({i+1}/{retries})...")
-                time.sleep(delay)
-        raise ConnectionError("Opencode CLI container did not become ready in time. Skipping tests.")
+    def check_local_opencode(cls, timeout=45):
+        print("Checking if local opencode is functionally ready...")
+        try:
+            # Perform a functional check.
+            result = subprocess.run(
+                ["opencode", "run", "-m", "google/gemini-2.5-flash", "What is 2+2?"],
+                check=True, capture_output=True, text=True, timeout=timeout
+            )
+            if "4" in result.stdout:
+                print(f"Local opencode is ready and responded correctly.")
+                return
+            else:
+                raise ConnectionError(f"Local opencode ran but did not return the expected output. Got: {result.stdout}")
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+            raise ConnectionError(f"Local opencode CLI is not ready or configured correctly. Skipping tests. Error: {e}")
 
     def setUp(self):
         self.agent_name = "CodeReviewerAgent"
@@ -218,6 +218,8 @@ print(result)
             or "typeerror" in response3.content.lower()
             or "TYPEERROR" in response3.content
             or "Typeerror" in response3.content,
+            "Agent's fix did not suggest converting to int or using type hints."
+        )
         print("[Test] Code reviewer persona and session context were maintained successfully.")
 
 if __name__ == '__main__':

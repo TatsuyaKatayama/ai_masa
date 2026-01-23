@@ -208,5 +208,7 @@ __marimo__/
 
 works/
 config/*.yml
+config/opencode
+!config/opencode/config.json
 redis-data/
 .env
