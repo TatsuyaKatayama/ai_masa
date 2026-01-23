@@ -2,7 +2,7 @@
 
 JSON_FORMAT_EXAMPLE = """
 {
-  "to_agent": "agent_name or user (should be the from_agent of the triggering message)",
+  "to_agent": "agent_name or user_name (should be the from_agent of the triggering message)",
   "cc_agents": [],
   "content": "Your response message here.",
   "job_id": "job_id_value"

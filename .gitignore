@@ -209,3 +209,4 @@ __marimo__/
 works/
 config/*.yml
 redis-data/
+.env

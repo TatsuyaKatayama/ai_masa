@@ -142,7 +142,7 @@ Example:
         logger.debug(f"[{self.name}][{job_id}] Built prompt:\n---PROMPT---\n{prompt}\n---END PROMPT---")
         
         llm_response_json = self._invoke_llm(prompt, llm_session_id)
-        logger.debug(f"[{self.name}][{job_id}] Received LLM response json:\n{llm_response_json}")
+        logger.debug(f"[{self.name}][{job_id}] Received raw response from _invoke_llm: '''{llm_response_json}'''")
         
         if not llm_response_json:
             logger.error(f"[{self.name}][{job_id}] Error: LLM did not return a response.")

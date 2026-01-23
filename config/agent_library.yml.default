@@ -65,3 +65,11 @@ foam_manager:
   working_dir: "works/FoamManager/{project_name}"
   redis_db: 2
 
+opencode_gemini:
+  type: opencode_agent.OpencodeAgent
+  name: OpencodeGemini
+  user_lang: English
+  model: google/gemini-2.5-flash
+  working_dir: "works/OpencodeAgent/{project_name}"
+  redis_db: 3
+
