@@ -88,5 +88,18 @@ class TestLoadEnv(unittest.TestCase):
         # Check that a warning message was printed to the console
         mock_print.assert_any_call(f"Warning: .env file not found at {non_existent_file}")
 
+    def test_dynamic_path_resolution(self):
+        """
+        Tests if `${PWD}` is correctly replaced with the current working directory.
+        """
+        # Add a line with ${PWD} to our temp file
+        with open(self.temp_env_file.name, "a") as f:
+            f.write("\nDYNAMIC_PATH=${PWD}/data/logs")
+
+        load_env_file(self.temp_env_file.name)
+        
+        expected_path = os.path.join(os.getcwd(), 'data', 'logs')
+        self.assertEqual(os.environ.get("DYNAMIC_PATH"), expected_path)
+
 if __name__ == "__main__":
     unittest.main()
