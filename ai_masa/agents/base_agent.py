@@ -148,18 +148,70 @@ Example:
             logger.error(f"[{self.name}][{job_id}] Error: LLM did not return a response.")
             return
 
+        response_data = None
         try:
             response_data = json.loads(llm_response_json)
+            if "to_agent" not in response_data:
+                logger.warning(f"[{self.name}][{job_id}] LLM response is valid JSON but missing 'to_agent' key. Retrying.")
+                response_data = self._handle_invalid_llm_response(llm_response_json, llm_session_id, job_id)
+        except json.JSONDecodeError:
+            logger.warning(f"[{self.name}][{job_id}] Initial LLM response is not valid JSON. Retrying.")
+            response_data = self._handle_invalid_llm_response(llm_response_json, llm_session_id, job_id)
+
+        if response_data is None:
+            logger.error(f"[{self.name}][{job_id}] Could not get a valid response from LLM after retry.")
+            return
+
+        try:
             self.broadcast(
                 target=response_data.get("to_agent"),
                 content=response_data.get("content"),
                 cc=response_data.get("cc_agents"),
                 job_id=job_id
             )
-        except json.JSONDecodeError as e:
-            logger.error(f"[{self.name}][{job_id}] Error decoding LLM response: {e}\nReceived: {llm_response_json}")
         except Exception as e:
             logger.error(f"[{self.name}][{job_id}] Error processing LLM response: {e}")
+
+    def _handle_invalid_llm_response(self, invalid_response: str, llm_session_id: str, job_id: str) -> Optional[Dict[str, Any]]:
+        """Handles invalid LLM response by prompting for correction and retrying."""
+        # 元の不正な応答を履歴に保存
+        self.memory_manager.add_message(self.memory_id, {
+            "from_agent": self.name,
+            "to_agent": "SystemCorrection",
+            "content": f"Invalid response received: {invalid_response}",
+            "job_id": job_id
+        })
+
+        # 修正を促すプロンプトを作成
+        correction_prompt = (
+            f"The previous response was not in the expected format. "
+            f"Please correct it. Ensure your entire response is a single, valid JSON object "
+            f"adhering to this structure: {JSON_FORMAT_EXAMPLE}"
+        )
+        
+        # 修正プロンプトも履歴に保存
+        self.memory_manager.add_message(self.memory_id, {
+            "from_agent": "SystemCorrection",
+            "to_agent": self.name,
+            "content": correction_prompt,
+            "job_id": job_id
+        })
+
+        # LLMを再実行
+        llm_response_json = self._invoke_llm(correction_prompt, llm_session_id)
+        if not llm_response_json:
+            logger.error(f"[{self.name}][{job_id}] Error: LLM did not return a response on retry.")
+            return None
+        
+        try:
+            response_data = json.loads(llm_response_json)
+            if "to_agent" not in response_data:
+                logger.error(f"[{self.name}][{job_id}] LLM response on retry is still missing 'to_agent' key.")
+                return None
+            return response_data
+        except json.JSONDecodeError as e:
+            logger.error(f"[{self.name}][{job_id}] Error decoding LLM response on retry: {e}\nReceived: {llm_response_json}")
+            return None
 
     def _create_llm_session(self, job_id: str) -> Optional[str]:
         logger.info(f"[{self.name}][{job_id}] Initializing LLM session with role: {self.role_prompt}")
