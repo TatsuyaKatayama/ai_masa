@@ -4,6 +4,8 @@ import os
 import hashlib
 from datetime import datetime
 import base64
+import markdown_it
+import shutil
 
 import colorsys
 
@@ -80,7 +82,6 @@ def generate_dynamic_css(agent_data: dict) -> str:
     base_css = """
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f0f0f0; }
     .container { max-width: 800px; margin: 20px auto; background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-    h1 { text-align: center; color: #333; margin-bottom: 30px; }
     .message-row { display: flex; margin-bottom: 15px; align-items: flex-start; }
     .message-row.from-User-agent { justify-content: flex-end; } /* ユーザーのメッセージは右寄せ */
     .message-row:not(.from-User-agent) { justify-content: flex-start; } /* その他のメッセージは左寄せ */
@@ -116,6 +117,12 @@ def main():
 
     # 出力ディレクトリの作成
     os.makedirs(args.output_dir, exist_ok=True)
+
+    # ログファイルの出力ディレクトリへのコピー
+    log_filename = os.path.basename(args.log_file)
+    destination_log_path = os.path.join(args.output_dir, log_filename)
+    shutil.copy(args.log_file, destination_log_path)
+    print(f"Log file copied to: {destination_log_path}")
 
     # ログの読み込み
     logs = load_logs(args.log_file)
@@ -166,14 +173,27 @@ def main():
         f.write(dynamic_css)
 
     # メッセージHTMLの生成
+    md = markdown_it.MarkdownIt()
     messages_html = []
     for log in logs:
         from_agent = log.get("from_agent", "Unknown")
-        content = log.get("content", "").replace("\n", "<br>")
+        to_agent = log.get("to_agent")
+        
+        content = log.get("content", "")
+        # ```latex ... ``` を $$...$$ に変換
+        content = content.replace("```latex", "$$").replace("```", "$$")
+
+        content_html = md.render(content)
+        
         timestamp_str = datetime.fromisoformat(log.get("timestamp")).strftime('%Y-%m-%d %H:%M:%S') if log.get("timestamp") else ""
 
         agent_class_name = from_agent.replace(' ', '-')
         icon_filename = agent_data.get(from_agent, {}).get("icon_filename", "")
+        
+        # エージェントフロー表示
+        agent_display_name = from_agent
+        if to_agent and to_agent != "_broadcast_":
+            agent_display_name += f" (→ {to_agent})"
 
         message_html = f"""
         <div class='message-row from-{agent_class_name}-agent'>
@@ -181,8 +201,8 @@ def main():
                 <img src='{icon_filename}' alt='{from_agent[0].upper()}' />
             </div>
             <div class='message-content'>
-                <div class='agent-name'>{from_agent}</div>
-                <div class='message-bubble'>{content}</div>
+                <div class='agent-name'>{agent_display_name}</div>
+                <div class='message-bubble'>{content_html}</div>
                 <div class='message-info'><span class='timestamp'>{timestamp_str}</span></div>
             </div>
         </div>
@@ -199,6 +219,21 @@ def main():
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>{args.title}</title>
         <link rel="stylesheet" href="style.css">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+        <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+        <script>
+            document.addEventListener("DOMContentLoaded", function() {{
+                renderMathInElement(document.body, {{
+                    delimiters: [
+                        {{left: "$$", right: "$$", display: true}},
+                        {{left: "$", right: "$", display: false}},
+                        {{left: "\\\\(", right: "\\\\)", display: false}},
+                        {{left: "\\\\[", right: "\\\\]", display: true}}
+                    ]
+                }});
+            }});
+        </script>
     </head>
     <body>
         <div class="container">
@@ -209,7 +244,8 @@ def main():
     """
 
     # HTMLファイルを保存
-    output_file_path = os.path.join(args.output_dir, "conversation.html")
+    output_filename = f"{args.title.replace(' ', '_')}.html"
+    output_file_path = os.path.join(args.output_dir, output_filename)
     with open(output_file_path, 'w', encoding='utf-8') as f:
         f.write(full_html)
 
