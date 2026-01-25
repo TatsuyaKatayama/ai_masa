@@ -125,5 +125,58 @@ python -m unittest discover tests
 | `*.yml` | ユーザーがカスタマイズするためのローカル設定ファイル (Git追跡対象外)。 |
 | `orchestrate.sh` | `tmuxinator` を使ってエージェント群を起動するメインスクリプト。 |
 | `tools/generate_tmux_config.py`| `orchestrate.sh`から呼び出され、tmuxinator設定を動的に生成する。 |
+| `tools/log_visualizer.py` | ログファイルをLINE風のHTMLとして可視化するツール。 |
 | `docker-compose.yml` | Redisサーバーを起動するためのDocker Compose設定。 |
 | `tests/` | プロジェクトのユニットテストおよび統合Test。 |
+
+### 📄 ログ可視化ツール
+
+`ai-masa` は、エージェント間の会話ログをLINEのような対話形式でHTMLファイルとして可視化するツールを提供します。これにより、エージェントの挙動や会話の流れを直感的に把握できます。
+
+#### 1. ツールの場所
+
+`ai_masa/tools/log_visualizer.py`
+
+#### 2. 機能概要
+
+指定された `.jsonl` 形式のログファイル（`LoggingAgent`が出力したもの）を読み込み、登場するエージェントを自動で特定します。各エージェントには、視覚的に区別しやすい背景色と、頭文字から生成されたSVGアイコンが割り当てられます。これらの情報に基づいて、CSSとSVGアイコンが内部に埋め込まれた自己完結型の `conversation.html` ファイルを生成します。
+
+#### 3. 使い方
+
+以下のコマンドを実行して、会話ログをHTMLファイルとして可視化できます。
+
+```bash
+python -m ai_masa.tools.log_visualizer \
+    --log_file /path/to/your/log/file.jsonl \
+    --output_dir /path/to/output/directory \
+    --title "Your Conversation Title"
+```
+
+**引数:**
+
+*   `--log_file` (必須): 可視化したい `.jsonl` 形式のログファイルへのパスを指定します。`LoggingAgent` が出力したログファイル（例: `works/LoggingAgent/your_project_name/logs/<job_id>.jsonl`）を指定してください。
+*   `--output_dir` (必須): 生成された `conversation.html` ファイル、`style.css`、および各エージェントの `*.svg` アイコンファイルが出力されるディレクトリを指定します。指定されたディレクトリが存在しない場合は自動的に作成されます。
+*   `--title` (任意): 生成されるHTMLページのタイトルとして表示される文字列を指定します。デフォルトは `"Conversation Log"` です。
+
+**実行例:**
+
+```bash
+# 例: 特定のjob_idのログを可視化する場合
+python -m ai_masa.tools.log_visualizer \
+    --log_file works/LoggingAgent/ai_masa_openfoam/logs/5b8d8501-72af-4c35-9f1f-03063ba677bb.jsonl \
+    --output_dir html_logs/openfoam_conversation \
+    --title "OpenFOAM Simulation with Foamer and FoamManager"
+
+# 出力されたHTMLファイルを開く
+# ブラウザで html_logs/openfoam_conversation/conversation.html を開いてください。
+```
+
+**出力ファイル:**
+
+指定された `--output_dir` には以下のファイルが生成されます。
+
+*   `conversation.html`: 会話ログを表示するメインのHTMLファイル。
+*   `style.css`: 会話のスタイルを定義するCSSファイル。
+*   `*_icon.svg`: 各エージェントの頭文字から生成されたSVGアイコンファイル。
+
+

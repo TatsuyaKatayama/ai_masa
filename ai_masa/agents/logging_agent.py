@@ -8,7 +8,7 @@ class LoggingAgent(ListenerAgent):
     def __init__(self, name: str = "Logger", description: str = "An agent that logs all messages.",
                  user_lang: str = 'Japanese', memory_id: str = "listener_memory",
                  redis_host: str = 'localhost', redis_port: int = 6379, redis_db: int = 0,
-                 start_heartbeat: bool = False, **kwargs):
+                 start_heartbeat: bool = False, working_dir: str = ".", **kwargs):
         # LoggingAgentはハートビート不要のためFalseに設定
         super().__init__(
             name=name,
@@ -21,6 +21,10 @@ class LoggingAgent(ListenerAgent):
             start_heartbeat=False,
             **kwargs
         )
+        self.working_dir = working_dir
+        self.log_dir = f"{self.working_dir}/logs"
+        import os
+        os.makedirs(self.log_dir, exist_ok=True)
 
     def _on_message_received(self, message_json: str):
         """
@@ -56,20 +60,15 @@ class LoggingAgent(ListenerAgent):
            (msg.content == "heartbeat" and (msg.job_id == "_system_" or "_broadcast_" in (msg.cc_agents or []))):
             return
             
+        log_file_path = f"{self.log_dir}/{msg.job_id}.jsonl"
+        with open(log_file_path, "a", encoding="utf-8") as f:
+            f.write(msg.to_json() + "\n")
+        
+        # コンソール出力も残しておく（デバッグ用）
         print(f"[{timestamp}][{msg.job_id}] {msg.from_agent} -> {msg.to_agent}{cc_info}: {msg.content}")
 
 if __name__ == "__main__":
-    # ListenerAgent.main()を使用するため、ここでは追加の引数を定義するのみ
-    parser = argparse.ArgumentParser(description="Run a LoggingAgent.")
-    parser.add_argument("name", type=str, help="The name of the agent.")
-    parser.add_argument("description", type=str, nargs='?', 
-                        default="An agent that logs all messages.", 
-                        help="Description of the agent.")
-    parser.add_argument("--user_lang", type=str, default="Japanese", help="Language for user interaction.")
-    parser.add_argument("--memory_id", type=str, required=True, help="Memory ID for the agent's history.")
-    parser.add_argument("--redis_host", type=str, default="localhost", help="Redis host.")
-    parser.add_argument("--redis_port", type=int, default=6379, help="Redis port.")
-    parser.add_argument("--redis_db", type=int, default=0, help="Redis DB.")
-
-    # ListenerAgent.mainに引数を渡し、そこでパースとエージェントの起動を行う
+    # ListenerAgent.mainが、ここで定義されていない引数もkwargsとして
+    # agent_classのコンストラクタに渡してくれる。
+    # そのため、ここでは何もせずmainを呼び出すだけで良い。
     ListenerAgent.main(LoggingAgent)
