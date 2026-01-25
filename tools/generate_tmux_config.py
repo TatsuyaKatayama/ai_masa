@@ -23,7 +23,7 @@ def load_yaml_config(config_path):
         return yaml.safe_load(f)
 
 
-def build_panes(team_name, ai_masa_project_root, venv_activate_path, project_name, logging_level):
+def build_panes(team_name, ai_masa_project_root, tmux_session_root, venv_activate_path, project_name, logging_level):
     agent_library_path = os.path.join(
         ai_masa_project_root, "config", "agent_library.yml"
     )
@@ -97,19 +97,22 @@ def build_panes(team_name, ai_masa_project_root, venv_activate_path, project_nam
         # Add --redis_db argument
         optional_args.append(f"--redis_db {shlex.quote(str(redis_db))}")
 
-        # Determine the final working directory
-        final_working_dir_relative = ""
+        agent_working_dir_part = ""
         if agent_working_dir_config:
             # If specified in config, use it and substitute {project_name}
-            final_working_dir_relative = agent_working_dir_config.replace("{project_name}", project_name)
+            agent_working_dir_part = agent_working_dir_config.replace("{project_name}", project_name)
         else:
-            # If not specified, default to works/{agent_name}/{project_name}
-            final_working_dir_relative = f"works/{agent_name_in_config}/{project_name}"
+            # If not specified, default to {agent_name}/{project_name}
+            agent_working_dir_part = f"{agent_name_in_config}/{project_name}"
 
-        # Ensure the directory exists relative to ai_masa_project_root
-        full_working_dir_path = os.path.join(ai_masa_project_root, final_working_dir_relative)
-        os.makedirs(full_working_dir_path, exist_ok=True) # Create directory if it doesn't exist
-        optional_args.append(f"--working_dir {shlex.quote(final_working_dir_relative)}")
+        # The final working directory path is relative to the tmux session root
+        final_working_dir_path = os.path.join(tmux_session_root, agent_working_dir_part)
+
+        # Ensure the directory exists
+        os.makedirs(final_working_dir_path, exist_ok=True)
+
+        # The path passed to the agent is relative from the tmux_session_root, which is agent_working_dir_part
+        optional_args.append(f"--working_dir {shlex.quote(agent_working_dir_part)}")
 
         # Add description and user_lang for agents that are not user_input_agent
         if 'user_input_agent' not in agent_module_path:
@@ -175,7 +178,7 @@ def build_panes(team_name, ai_masa_project_root, venv_activate_path, project_nam
 def generate_config(
     team_name,
     ai_masa_project_root,
-    tmuxinator_memory_root,
+    tmux_session_root,
     venv_activate_path,
     template_path,
     output_path,
@@ -189,7 +192,7 @@ def generate_config(
         shell_pane_str,
         other_agent_panes_str,
         has_gemini_cli,
-    ) = build_panes(team_name, ai_masa_project_root, venv_activate_path, project_name, logging_level)
+    ) = build_panes(team_name, ai_masa_project_root, tmux_session_root, venv_activate_path, project_name, logging_level)
 
     with open(template_path, "r") as f:
         template_content = f.read()
@@ -197,7 +200,7 @@ def generate_config(
     # Replace placeholders
 
     config_content = template_content.replace(
-        "__PROJECT_ROOT__", tmuxinator_memory_root
+        "__PROJECT_ROOT__", tmux_session_root
     )
 
     config_content = config_content.replace("__PROJECT_NAME__", project_name)
@@ -222,7 +225,7 @@ def generate_config(
 if __name__ == "__main__":
     if len(sys.argv) != 9:
         print(
-            f"Usage: python {sys.argv[0]} <team_name> <ai_masa_project_root> <tmuxinator_memory_root> <venv_activate_path> <template_path> <output_path> <project_name> <logging_level>",
+            f"Usage: python {sys.argv[0]} <team_name> <ai_masa_project_root> <tmux_session_root> <venv_activate_path> <template_path> <output_path> <project_name> <logging_level>",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -230,7 +233,7 @@ if __name__ == "__main__":
     (
         team_name,
         ai_masa_project_root,
-        tmuxinator_memory_root,
+        tmux_session_root,
         venv_activate_path,
         template_path,
         output_path,
@@ -241,7 +244,7 @@ if __name__ == "__main__":
     has_gemini_cli = generate_config(
         team_name,
         ai_masa_project_root,
-        tmuxinator_memory_root,
+        tmux_session_root,
         venv_activate_path,
         template_path,
         output_path,

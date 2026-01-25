@@ -141,6 +141,7 @@ if __name__ == "__main__":
     parser.add_argument("--redis_port", type=int, default=6379, help="Redis port.")
     parser.add_argument("--redis_db", type=int, default=0, help="Redis DB.")
     parser.add_argument("--default_target_agent", type=str, help="The default agent to send messages to.")
+    parser.add_argument("--working_dir", type=str, default=None, help="Working directory for the agent.")
     parser.add_argument("--logging_level", type=str, default="INFO", help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 
     args = parser.parse_args()
@@ -158,7 +159,8 @@ if __name__ == "__main__":
         redis_host=args.redis_host,
         redis_port=args.redis_port,
         redis_db=args.redis_db,
-        default_target_agent=args.default_target_agent
+        default_target_agent=args.default_target_agent,
+        working_dir=args.working_dir
     )
     try:
         agent.start_interaction()
