@@ -3,6 +3,9 @@ from unittest.mock import patch
 import sys
 from io import StringIO
 import json
+import os
+import shutil
+import tempfile
 
 from ai_masa.agents.logging_agent import LoggingAgent
 from ai_masa.models.message import Message
@@ -11,6 +14,7 @@ class TestLoggingAgent(unittest.TestCase):
 
     def setUp(self):
         """Set up mocks and agent instance for each test case."""
+        self.test_dir = tempfile.mkdtemp()
         self.mock_broker_patcher = patch('ai_masa.agents.base_agent.RedisBroker')
         self.mock_memory_manager_patcher = patch('ai_masa.agents.base_agent.MemoryManager')
         self.mock_base_agent_start_heartbeat_patcher = patch('ai_masa.agents.base_agent.BaseAgent._start_heartbeat')
@@ -28,16 +32,48 @@ class TestLoggingAgent(unittest.TestCase):
             name="TestLogger",
             description="An agent that logs all messages.",
             memory_id="TestLogger:test_project", # 必須となったmemory_idを渡す
-            memory_manager=self.mock_memory_manager_instance # モックを渡す
+            memory_manager=self.mock_memory_manager_instance, # モックを渡す
+            working_dir=self.test_dir
         )
 
     def tearDown(self):
-        """Stop all patchers."""
+        """Stop all patchers and clean up the test directory."""
+        shutil.rmtree(self.test_dir)
         self.mock_broker_patcher.stop()
         self.mock_memory_manager_patcher.stop()
         self.mock_base_agent_start_heartbeat_patcher.stop()
         self.mock_stdout_patcher.stop()
         sys.stdout = sys.__stdout__ # stdoutを元に戻す
+
+    def test_logs_to_file_correctly(self):
+        """
+        Test that a message is logged to a file in JSONL format correctly.
+        """
+        msg_dict = {
+            "from_agent": "FileAgent",
+            "to_agent": "FileTester",
+            "content": "Log this to a file.",
+            "job_id": "file-log-job-123"
+        }
+        msg = Message(**msg_dict)
+        msg_json = msg.to_json()
+
+        # Receive the message
+        self.agent._on_message_received(msg_json)
+
+        # Check if the log file was created and contains the correct content
+        log_file_path = os.path.join(self.test_dir, "logs", f"{msg.job_id}.jsonl")
+        self.assertTrue(os.path.exists(log_file_path))
+
+        with open(log_file_path, 'r', encoding='utf-8') as f:
+            line = f.readline()
+            logged_msg_dict = json.loads(line)
+            
+            # Compare the relevant fields
+            self.assertEqual(logged_msg_dict['from_agent'], msg_dict['from_agent'])
+            self.assertEqual(logged_msg_dict['to_agent'], msg_dict['to_agent'])
+            self.assertEqual(logged_msg_dict['content'], msg_dict['content'])
+            self.assertEqual(logged_msg_dict['job_id'], msg_dict['job_id'])
 
     @patch('ai_masa.agents.logging_agent.datetime')
     def test_logs_standard_message(self, mock_datetime):
