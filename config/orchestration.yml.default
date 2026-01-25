@@ -33,3 +33,12 @@ of:
   template: orchestration.yml.template
   session_root: "works/openfoam"
   logging_level: DEBUG
+
+# Configuration for OpenFOAM team with Opencode
+# To run this, use: ./orchestrate.sh oof
+oof:
+  project_name: ai_masa_openfoam_opencode
+  team_name: opencode_team_openfoam
+  template: orchestration.yml.template
+  session_root: "works/openfoam"
+  logging_level: DEBUG

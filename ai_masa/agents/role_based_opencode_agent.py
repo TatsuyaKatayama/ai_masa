@@ -1,55 +1,81 @@
-import logging
-import subprocess
-import shlex
-import os
 from typing import Optional
+import sys
+import argparse
+import logging
 
+from .role_based_agent import RoleBasedAgent
 from .opencode_agent import OpencodeAgent
-from ..models.message import Message
 
-logger = logging.getLogger(__name__)
-
-class RoleBasedOpencodeAgent(OpencodeAgent):
+class RoleBasedOpencodeAgent(OpencodeAgent, RoleBasedAgent):
     """
-    A Role-Based Agent that uses the external Opencode CLI command as its LLM backend.
-    It combines the role-based prompting capabilities with the Opencode CLI's multi-provider support.
-    The user is responsible for configuring the Opencode CLI backend (e.g., OpenAI, Anthropic) beforehand.
+    An agent that combines the role-based behavior of RoleBasedAgent
+    with the Opencode CLI functionalities of OpencodeAgent.
+    The order of inheritance is important: OpencodeAgent's methods (like _initialize_session)
+    should take precedence over BaseAgent's, and RoleBasedAgent's __init__ logic is layered on top.
     """
-    def __init__(self, name: str, description: Optional[str] = None,
-                 user_lang: str = 'Japanese', memory_id: str = "role_opencode_session",
+    def __init__(self, name: str = "RoleBasedOpencodeAgent", description: Optional[str] = None,
+                 user_lang: str = 'Japanese', memory_id: str = "rb_opencode_memory",
                  redis_host: str = 'localhost', redis_port: int = 6379, redis_db: int = 0,
-                 llm_command: Optional[str] = None,
-                 llm_session_create_command: Optional[str] = None, # Not used, but required by BaseAgent
-                 working_dir: Optional[str] = None,
-                 role_prompt: str = "You are a helpful AI assistant.",
-                 model: str = "google/gemini-2.5-flash", **kwargs):
-        
-        # OpencodeAgent.__init__ will set up llm_command and self.model
+                 role_prompt: Optional[str] = None, llm_command: Optional[str] = None, 
+                 working_dir: Optional[str] = None, model: str = "google/gemini-2.5-flash", **kwargs):
+
+        # RoleBasedAgent's logic: use role_prompt as description if description is not provided
+        final_description = description if description is not None else (role_prompt if role_prompt else "A role-based Opencode agent.")
+
+        # MRO: RoleBasedOpencodeAgent -> OpencodeAgent -> RoleBasedAgent -> BaseAgent
+        # We call super() which will eventually call BaseAgent.__init__ with all necessary arguments.
         super().__init__(
             name=name,
-            description=description, 
+            description=final_description,
             user_lang=user_lang,
             memory_id=memory_id,
             redis_host=redis_host,
             redis_port=redis_port,
             redis_db=redis_db,
+            role_prompt=role_prompt,
             llm_command=llm_command,
-            llm_session_create_command=llm_session_create_command, # Pass through, will be overwritten by _create_llm_session logic
             working_dir=working_dir,
-            model=model, # Pass model to OpencodeAgent
+            model=model,
             **kwargs
         )
 
-        # Override role_prompt from OpencodeAgent's description-based prompt
-        self.role_prompt = role_prompt
-        self.description = description # Preserve original description
-
-        logger.debug(f"[{self.name}] RoleBasedOpencodeAgent initialized with role_prompt: {self.role_prompt}")
-
-    # No need to override _create_llm_session as OpencodeAgent's implementation is sufficient.
-    # No need to override _invoke_llm as OpencodeAgent's overridden version is sufficient.
-    # No need to override _process_llm_response as BaseAgent's implementation is sufficient.
-
 if __name__ == "__main__":
-    # This part will be implemented in a later step, similar to OpencodeAgent's main block.
-    pass
+    parser = argparse.ArgumentParser(description="Launch a RoleBasedOpencodeAgent.")
+    parser.add_argument("name", type=str, help="The name of the agent.")
+    parser.add_argument("description", type=str, nargs='?', default=None, help="The description of the agent. If not provided, role_prompt will be used.")
+    parser.add_argument("--user_lang", type=str, default="Japanese", help="The user language for the agent.")
+    parser.add_argument("--memory_id", type=str, required=True, help="Memory ID for the agent's history.")
+    parser.add_argument("--redis_host", type=str, default="localhost", help="Redis host.")
+    parser.add_argument("--redis_port", type=int, default=6379, help="Redis port.")
+    parser.add_argument("--redis_db", type=int, default=0, help="Redis DB.")
+    parser.add_argument("--role_prompt", type=str, help="The role prompt for the agent. Used as description if --description is not set.")
+    parser.add_argument('--llm_command', type=str, default=None, help='The command to execute for the LLM.')
+    parser.add_argument('--working_dir', type=str, default=None, help='Working directory for LLM commands.')
+    parser.add_argument('--model', type=str, default='google/gemini-2.5-flash', help='The opencode model to use.')
+    parser.add_argument("--logging_level", type=str, default="INFO", help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
+    
+    args = parser.parse_args()
+
+    # Configure logging
+    log_level = getattr(logging, args.logging_level.upper(), logging.INFO)
+    logging.basicConfig(level=log_level, stream=sys.stdout, format='[%(name)s][%(levelname)s] %(message)s')
+
+    agent = RoleBasedOpencodeAgent(
+        name=args.name,
+        description=args.description,
+        user_lang=args.user_lang,
+        memory_id=args.memory_id,
+        redis_host=args.redis_host,
+        redis_port=args.redis_port,
+        redis_db=args.redis_db,
+        role_prompt=args.role_prompt,
+        llm_command=args.llm_command,
+        working_dir=args.working_dir,
+        model=args.model
+    )
+    try:
+        agent.observe_loop()
+    except KeyboardInterrupt:
+        print(f"[{agent.name}] Shutting down.")
+    finally:
+        agent.shutdown()

@@ -26,3 +26,10 @@ creative_team:
   - team_manager
   - topic_creator
   - gemini_cli
+
+opencode_team_openfoam:
+  - user_input
+  - foam_manager
+  - opencode_foamer
+  - logging_agent
+  - kintaikun
