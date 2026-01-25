@@ -1,112 +1,155 @@
 import unittest
-import threading
+import subprocess
 import time
+import redis
 import json
-import sys
 import os
-
-# パスを通す
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from unittest.mock import patch
 
 from ai_masa.agents.base_agent import BaseAgent
 from ai_masa.models.message import Message
+from ai_masa.comms.memory_manager import MemoryManager
 
-class TestRedisCommunication(unittest.TestCase):
+# Configuration for test Redis instance (must match docker-compose.yml)
+TEST_REDIS_HOST = 'localhost'
+TEST_REDIS_PORT = 6379
+TEST_REDIS_DB = 1 # Use a dedicated DB for integration testing to avoid conflicts
+
+# Note: This test requires Docker and docker-compose to be installed and running.
+class TestBaseAgentIntegration(unittest.TestCase):
     """
-    Redisを介したエージェント間通信の統合テスト
-    ※ Redisサーバーが localhost:6379 で動いている必要があります
+    Integration test for BaseAgent with a real Redis instance managed by Docker.
     """
 
-    def setUp(self):
-        # テスト用エージェントの作成
-        self.agent_chief = BaseAgent("Chief", "Manager")
-        self.agent_calc = BaseAgent("Calculator", "Worker")
+    @classmethod
+    def setUpClass(cls):
+        """Starts the Redis container before any tests are run."""
+        print("\nStarting Redis container for integration tests...")
         
-        # 受信確認用バッファ
-        self.chief_received = []
-        self.calc_received = []
+        # We need to specify the path to the docker-compose file relative to the project root
+        compose_file_path = os.path.join(os.path.dirname(__file__), '..', 'docker-compose.yml')
+        if not os.path.exists(compose_file_path):
+            raise FileNotFoundError(f"docker-compose.yml not found at {compose_file_path}")
 
-        # スレッドオブジェクトを保持
-        self.t1 = None
-        self.t2 = None
+        try:
+            subprocess.run(
+                ["docker", "compose", "-f", compose_file_path, "up", "-d"],
+                check=True, capture_output=True
+            )
+            # Wait for Redis to be ready
+            cls.wait_for_redis()
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            print("Error starting Redis container. Is Docker running?")
+            print(f"Stderr: {e.stderr if hasattr(e, 'stderr') else 'N/A'}")
+            raise
 
-        # コールバックをテスト用に上書きして、受信内容をリストに保存
-        def mock_handler_chief(msg_json):
-            msg = Message.from_json(msg_json)
-            if msg.to_agent == "Chief": 
-                self.chief_received.append(msg)
-
-        def mock_handler_calc(msg_json):
-            msg = Message.from_json(msg_json)
-            if msg.to_agent == "Calculator":
-                self.calc_received.append(msg)
-                # Calculatorは受信したらChiefへ返信するシミュレーション
-                if "計算して" in msg.content:
-                    self.agent_calc.broadcast(
-                        target="Chief",
-                        content="計算完了: 100mm2",
-                        job_id="job-123"
-                    )
-
-        # プライベートメソッドをモックに差し替え (subscribe内部で呼ばれる)
-        self.agent_chief._on_message_received = mock_handler_chief
-        self.agent_calc._on_message_received = mock_handler_calc
-    
-    def tearDown(self):
-        print("\n--- Tearing down test ---")
-        # エージェントのシャットダウンをトリガー
-        self.agent_chief.shutdown()
-        self.agent_calc.shutdown()
-
-        # スレッドが終了するのを待つ
-        if self.t1 and self.t1.is_alive():
-            self.t1.join()
-        if self.t2 and self.t2.is_alive():
-            self.t2.join()
-        
-        # スレッドが停止した後に接続を閉じる
-        self.agent_chief.broker.disconnect()
-        self.agent_calc.broker.disconnect()
-        print("--- Teardown complete ---")
-
-    def test_pubsub_communication(self):
-        print("\n--- Testing Redis Pub/Sub ---")
-
-        # 1. 各エージェントの監視ループを別スレッドで開始
-        self.t1 = threading.Thread(target=self.agent_chief.observe_loop)
-        self.t2 = threading.Thread(target=self.agent_calc.observe_loop)
-        self.t1.start()
-        self.t2.start()
-
-        # Redisの接続とサブスクライブ待ち
-        time.sleep(1)
-
-        # 2. Chief -> Calculator へメッセージ送信
-        print("[Test] Chief sends request...")
-        self.agent_chief.broadcast(
-            target="Calculator",
-            content="断面積を計算して",
-            job_id="job-123"
+    @classmethod
+    def tearDownClass(cls):
+        """Stops the Redis container after all tests are done."""
+        print("\nStopping Redis container...")
+        compose_file_path = os.path.join(os.path.dirname(__file__), '..', 'docker-compose.yml')
+        subprocess.run(
+            ["docker", "compose", "-f", compose_file_path, "down"],
+            capture_output=True
         )
 
-        # 通信の伝播待ち
-        time.sleep(1)
+    @classmethod
+    def wait_for_redis(cls, retries=10, delay=2):
+        """Waits for the Redis container to become available."""
+        print("Waiting for Redis to be ready...")
+        for i in range(retries):
+            try:
+                r = redis.Redis(host=TEST_REDIS_HOST, port=TEST_REDIS_PORT, db=TEST_REDIS_DB)
+                if r.ping():
+                    print("Redis is ready.")
+                    cls.redis_client = r
+                    return
+            except redis.exceptions.ConnectionError:
+                time.sleep(delay)
+        raise ConnectionError("Could not connect to Redis container after multiple retries.")
 
-        # 3. 検証: Calculatorが受信したか？
-        self.assertTrue(len(self.calc_received) > 0, "Calculator should receive the message")
-        self.assertEqual(self.calc_received[0].content, "断面積を計算して")
-        self.assertEqual(self.calc_received[0].from_agent, "Chief")
-
-        # 4. 検証: Calculatorの返信をChiefが受信したか？
-        time.sleep(1) # 返信待ち
-        self.assertTrue(len(self.chief_received) > 0, "Chief should receive the reply")
-        self.assertEqual(self.chief_received[0].content, "計算完了: 100mm2")
-        self.assertEqual(self.chief_received[0].from_agent, "Calculator")
+    def setUp(self):
+        """Cleans the Redis database before each test."""
+        self.assertTrue(self.redis_client.ping(), "Redis connection failed at setUp.")
+        self.redis_client.flushdb()
         
-        print("--- Test Passed ✅ ---")
+        # We only mock the subprocess call to the LLM, everything else is real.
+        self.mock_subprocess_patcher = patch('subprocess.run')
+        self.mock_subprocess_run = self.mock_subprocess_patcher.start()
+
+    def tearDown(self):
+        """Stops the patcher."""
+        self.mock_subprocess_patcher.stop()
+
+    def test_full_scenario_integration(self):
+        """
+        Tests Scenario 1 and 2 in a single flow against a real Redis DB.
+        """
+        project_name = "integ-project"
+        agent_name = "IntegAgent"
+        memory_id = f"{project_name}-{agent_name}"
+        job_id = "job-integ-123"
+
+        # Use the real SessionManager
+        memory_manager = MemoryManager(host=TEST_REDIS_HOST, port=TEST_REDIS_PORT, db=TEST_REDIS_DB)
+
+        agent = BaseAgent(
+            name=agent_name,
+            description="An integration test agent.",
+            memory_id=memory_id,
+            redis_host=TEST_REDIS_HOST,
+            redis_port=TEST_REDIS_PORT,
+            redis_db=TEST_REDIS_DB,
+            llm_command="gemini -r {session_id}",
+            llm_session_create_command="create_session_cmd",
+            start_heartbeat=False
+        )
+        
+        # --- SCENARIO 1: First message ---
+        
+        # Arrange (Scenario 1)
+        trigger_message_1 = Message(from_agent="User", to_agent=agent_name, content="Hello", job_id=job_id)
+        llm_response_1 = json.dumps({"to_agent": "User", "content": "Hi there!"})
+        self.mock_subprocess_run.side_effect = [
+            subprocess.CompletedProcess(args='create_session_cmd', returncode=0, stdout='llm-session-abc', stderr=''),
+            subprocess.CompletedProcess(args='gemini', returncode=0, stdout=llm_response_1, stderr='')
+        ]
+
+        # Act (Scenario 1)
+        agent._on_message_received(trigger_message_1.to_json())
+
+        # Assert (Scenario 1) - Check Redis directly
+        self.assertEqual(self.mock_subprocess_run.call_count, 2, "Expected LLM session creation and one LLM call.")
+        
+        history = memory_manager.get_history(memory_id, agent_name)
+        self.assertEqual(len(history), 2)
+        self.assertEqual(history[0]['content'], "Hello")
+        self.assertEqual(history[1]['content'], "Hi there!")
+
+        agent_state = memory_manager.get_agent_state(memory_id, agent_name)
+        self.assertEqual(agent_state['llm_sessions'][job_id], 'llm-session-abc')
+
+        # --- SCENARIO 2: Second message ---
+
+        # Arrange (Scenario 2)
+        trigger_message_2 = Message(from_agent="User", to_agent=agent_name, content="How are you?", job_id=job_id)
+        llm_response_2 = json.dumps({"to_agent": "User", "content": "I am fine."})
+        # Reset mock for the second call - only one subprocess call is expected now
+        self.mock_subprocess_run.reset_mock()
+        self.mock_subprocess_run.side_effect = [
+             subprocess.CompletedProcess(args='gemini', returncode=0, stdout=llm_response_2, stderr='')
+        ]
+
+        # Act (Scenario 2)
+        agent._on_message_received(trigger_message_2.to_json())
+
+        # Assert (Scenario 2)
+        self.mock_subprocess_run.assert_called_once() # CRITICAL: No new LLM session was created
+        
+        history = memory_manager.get_history(memory_id, agent_name)
+        self.assertEqual(len(history), 4) # 2 from previous, 2 from this turn
+        self.assertEqual(history[2]['content'], "How are you?")
+        self.assertEqual(history[3]['content'], "I am fine.")
 
 if __name__ == '__main__':
-    try:
-        unittest.main()
-    except KeyboardInterrupt:
-        pass
+    unittest.main()

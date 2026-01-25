@@ -2,7 +2,7 @@
 
 JSON_FORMAT_EXAMPLE = """
 {
-  "to_agent": "agent_name or user (should be the from_agent of the triggering message)",
+  "to_agent": "agent_name or user_name (should be the from_agent of the triggering message)",
   "cc_agents": [],
   "content": "Your response message here.",
   "job_id": "job_id_value"
@@ -25,9 +25,8 @@ Your role is as follows:
 
 {observer_instructions}
 
-Based on the conversation history below and the last message, decide the next action to take.
-The action should be sending a message to another agent.
-You must generate the response in the JSON format specified in your role prompt.
+Based on the conversation history below and the last message, decide the next action.
+The action must be to send a message to another agent.
 
 [Conversation History]
 {history}
@@ -36,5 +35,17 @@ You must generate the response in the JSON format specified in your role prompt.
 From: {from_agent}
 Content: {content}
 
-[Your Response (JSON format)]
+---
+**CRITICAL INSTRUCTION:**
+Your final response MUST be a single, valid JSON object and nothing else.
+Do not add any text outside the JSON object, including explanations or introductions.
+The JSON object must conform to the following structure:
+```json
+{{
+  "to_agent": "recipient_agent_name (must be '{from_agent}' if replying to the last message)",
+  "cc_agents": ["agent_name_1", "agent_name_2"],
+  "content": "Your detailed response message here.",
+  "job_id": "job_id_from_last_message"
+}}
+```
 """

@@ -3,16 +3,17 @@ import time
 from .broker_base import MessageBroker
 
 class RedisBroker(MessageBroker):
-    def __init__(self, host='localhost', port=6379, channel='ai_masa_channel'):
+    def __init__(self, host='localhost', port=6379, db=0, channel='ai_masa_channel'):
         self.host = host
         self.port = port
+        self.db = db
         self.channel = channel
         self.client = None
         self.pubsub = None
 
     def connect(self):
         # decode_responses=True にすることで、bytesではなくstrで受け取る
-        self.client = redis.Redis(host=self.host, port=self.port, decode_responses=True)
+        self.client = redis.Redis(host=self.host, port=self.port, db=self.db, decode_responses=True)
         try:
             self.client.ping()
             print(f"[RedisBroker] Connected to {self.host}:{self.port}")

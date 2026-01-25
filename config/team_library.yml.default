@@ -1,0 +1,35 @@
+# config/team_library.yml
+# Defines multiple team configurations.
+# Use './orchestrate.sh <team_name>' to launch a specific team.
+
+default_team:
+  - user_input
+  - gemini_cli
+
+analysis_team:
+  - user_input
+  - team_manager
+  - chief_officer
+  - calculator
+  - logging_agent 
+  - kintaikun 
+
+team_openfoam:
+  - user_input
+  - foam_manager
+  - foamer
+  - logging_agent 
+  - kintaikun 
+
+creative_team:
+  - user_input
+  - team_manager
+  - topic_creator
+  - gemini_cli
+
+opencode_team_openfoam:
+  - user_input
+  - ocFoamManager
+  - ocFoamer
+  - logging_agent
+  - kintaikun

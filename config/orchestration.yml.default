@@ -1,0 +1,44 @@
+# This is the orchestration configuration file.
+# You can define multiple orchestration settings here.
+# To run a specific setting, execute: ./orchestrate.sh <setting_name>
+# If no setting_name is provided, 'default' will be used.
+
+default:
+  # The name of the tmuxinator project.
+  # Config files will be generated in {tmux_session_root}/{project_name}/
+  project_name: ai_masa_orchestration
+  # The name of the team to launch (must be defined in config/team_library.yml)
+  team_name: analysis_team
+  # The tmuxinator template to use (located in config/templates/)
+  template: orchestration.yml.template
+  # The root directory for the tmux session, relative to the ai_masa project root.
+  tmux_session_root: "works"
+  # Logging level for all agents in this orchestration (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  logging_level: INFO
+
+# Example of another configuration
+# To run this, use: ./orchestrate.sh 3pane
+3pane:
+  project_name: ai_masa_orchestration_3pane
+  team_name: analysis_team
+  template: orchestration.yml.template
+  tmux_session_root: "works"
+  logging_level: INFO
+
+# Configuration for OpenFOAM team
+# To run this, use: ./orchestrate.sh of
+of:
+  project_name: ai_masa_openfoam
+  team_name: team_openfoam
+  template: orchestration.yml.template
+  tmux_session_root: "works/openfoam"
+  logging_level: DEBUG
+
+# Configuration for OpenFOAM team with Opencode
+# To run this, use: ./orchestrate.sh oof
+oof:
+  project_name: ai_masa_openfoam_opencode
+  team_name: opencode_team_openfoam
+  template: orchestration.yml.template
+  tmux_session_root: "works/openfoam"
+  logging_level: DEBUG

@@ -1,0 +1,253 @@
+import os
+import shlex
+import sys
+
+import yaml
+
+
+def load_yaml_config(config_path):
+    """Loads a YAML config file, falling back to a .default version if it exists."""
+    if not os.path.exists(config_path):
+        default_path = f"{config_path}.default"
+        if os.path.exists(default_path):
+            print(f"Info: Using default config '{default_path}'", file=sys.stderr)
+            config_path = default_path
+        else:
+            print(
+                f"Error: Config file not found at '{config_path}' or '{default_path}'",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    with open(config_path, "r") as f:
+        return yaml.safe_load(f)
+
+
+def build_panes(team_name, ai_masa_project_root, tmux_session_root, venv_activate_path, project_name, logging_level):
+    agent_library_path = os.path.join(
+        ai_masa_project_root, "config", "agent_library.yml"
+    )
+
+    team_library_path = os.path.join(ai_masa_project_root, "config", "team_library.yml")
+
+    agent_library = load_yaml_config(agent_library_path)
+
+    team_library = load_yaml_config(team_library_path)
+
+    try:
+        selected_team_members = team_library[team_name]
+
+    except KeyError:
+        print(
+            f"Error: Team '{team_name}' not found in the loaded team library",
+            file=sys.stderr,
+        )
+
+        sys.exit(1)
+
+    user_input_logging_panes = []
+
+    other_agent_panes = []
+
+    has_gemini_cli_agent = False  # Flag to track gemini cli agents
+
+    # Build panes for each agent
+
+    for member_key in selected_team_members:
+        try:
+            agent_config = agent_library[member_key]
+
+        except KeyError:
+            print(
+                f"Error: Agent '{member_key}' not found in the loaded agent library",
+                file=sys.stderr,
+            )
+
+            sys.exit(1)
+
+        agent_type_full = agent_config["type"]
+
+        # Check for gemini_cli_agent
+
+        if "gemini_cli_agent" in agent_type_full:
+            has_gemini_cli_agent = True
+
+        agent_module_path = ".".join(agent_type_full.split(".")[:-1])
+
+        agent_name_in_config = agent_config.get("name", member_key)
+
+        user_lang = agent_config.get("user_lang", "English")
+
+        role_prompt = agent_config.get("role_prompt")
+
+        llm_command = agent_config.get("llm_command")
+
+        # Retrieve working_dir and redis_db from agent_config
+        agent_working_dir_config = agent_config.get("working_dir")
+        redis_db = agent_config.get("redis_db", 0) # Default to 0 if not specified
+
+        # Generate a unique memory ID for each agent within the project
+        # Changed to Agent-centric: {agent_name}:{project_name}
+        memory_id = f"{agent_name_in_config}:{project_name}"
+
+        base_command = f"python -m ai_masa.agents.{agent_module_path}"
+        positional_args = [shlex.quote(agent_name_in_config)]
+        optional_args = [f"--memory_id {shlex.quote(memory_id)}"]
+
+        # Add --redis_db argument
+        optional_args.append(f"--redis_db {shlex.quote(str(redis_db))}")
+
+        agent_working_dir_part = ""
+        if agent_working_dir_config:
+            # If specified in config, use it and substitute {project_name}
+            agent_working_dir_part = agent_working_dir_config.replace("{project_name}", project_name)
+        else:
+            # If not specified, default to {agent_name}/{project_name}
+            agent_working_dir_part = f"{agent_name_in_config}/{project_name}"
+
+        # The final working directory path is relative to the tmux session root
+        final_working_dir_path = os.path.join(tmux_session_root, agent_working_dir_part)
+
+        # Ensure the directory exists
+        os.makedirs(final_working_dir_path, exist_ok=True)
+
+        # The path passed to the agent is relative from the tmux_session_root, which is agent_working_dir_part
+        optional_args.append(f"--working_dir {shlex.quote(agent_working_dir_part)}")
+
+        # Add description and user_lang for agents that are not user_input_agent
+        if 'user_input_agent' not in agent_module_path:
+            # For RoleBasedAgents, role_prompt is the description if no explicit one is set.
+            if 'role_based' in agent_module_path.lower() and role_prompt:
+                description = role_prompt
+            else:
+                description = agent_config.get('description', f'Default description for {agent_name_in_config}')
+            
+            positional_args.append(shlex.quote(description))
+            optional_args.append(f"--user_lang {shlex.quote(user_lang)}")
+
+        # Add --default_target_agent for user_input_agent
+        if "user_input_agent" in agent_module_path:
+            try:
+                current_index = selected_team_members.index(member_key)
+                if current_index + 1 < len(selected_team_members):
+                    next_member_key = selected_team_members[current_index + 1]
+                    next_agent_name = agent_library[next_member_key].get("name", next_member_key)
+                    optional_args.append(f"--default_target_agent {shlex.quote(next_agent_name)}")
+            except ValueError:
+                pass
+
+        # Add other optional arguments
+        optional_args.append(f"--logging_level {shlex.quote(logging_level)}")
+        if "role_based" in agent_module_path.lower() and role_prompt:
+            optional_args.append(f"--role_prompt {shlex.quote(role_prompt)}")
+        if llm_command:
+            optional_args.append(f"--llm_command {shlex.quote(llm_command)}")
+
+        # Combine all parts in the correct order
+        command = " ".join([base_command] + positional_args + optional_args)
+
+        pane_str = (
+            f"        - {member_key.lower().replace(' ', '_')}:\n"
+            f"            - source {venv_activate_path}\n"
+            f"            - {command}"
+        )
+
+        if (
+            "user_input_agent" in agent_module_path
+            or "logging_agent" in agent_module_path
+        ):
+            user_input_logging_panes.append(pane_str)
+
+        else:
+            other_agent_panes.append(pane_str)
+
+    # Build the shell pane separately
+
+    shell_pane = (
+        f"            - source {venv_activate_path}\n            - # Generic shell pane"
+    )
+
+    return (
+        "\n".join(user_input_logging_panes),
+        shell_pane,
+        "\n".join(other_agent_panes),
+        has_gemini_cli_agent,
+    )
+
+
+def generate_config(
+    team_name,
+    ai_masa_project_root,
+    tmux_session_root,
+    venv_activate_path,
+    template_path,
+    output_path,
+    project_name,
+    logging_level,
+):
+    """Generates the final tmuxinator config file."""
+
+    (
+        user_input_logging_panes_str,
+        shell_pane_str,
+        other_agent_panes_str,
+        has_gemini_cli,
+    ) = build_panes(team_name, ai_masa_project_root, tmux_session_root, venv_activate_path, project_name, logging_level)
+
+    with open(template_path, "r") as f:
+        template_content = f.read()
+
+    # Replace placeholders
+
+    config_content = template_content.replace(
+        "__PROJECT_ROOT__", tmux_session_root
+    )
+
+    config_content = config_content.replace("__PROJECT_NAME__", project_name)
+
+    config_content = config_content.replace(
+        "__USER_INPUT_LOGGING_PANES__", user_input_logging_panes_str
+    )
+
+    config_content = config_content.replace("__SHELL_PANE__", shell_pane_str)
+
+    config_content = config_content.replace(
+        "__OTHER_AGENT_PANES__", other_agent_panes_str
+    )
+
+    with open(output_path, "w") as f:
+        f.write(config_content)
+
+    # Return the flag indicating presence of gemini cli agent
+    return has_gemini_cli
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 9:
+        print(
+            f"Usage: python {sys.argv[0]} <team_name> <ai_masa_project_root> <tmux_session_root> <venv_activate_path> <template_path> <output_path> <project_name> <logging_level>",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    (
+        team_name,
+        ai_masa_project_root,
+        tmux_session_root,
+        venv_activate_path,
+        template_path,
+        output_path,
+        project_name,
+        logging_level,
+    ) = sys.argv[1:9]
+
+    has_gemini_cli = generate_config(
+        team_name,
+        ai_masa_project_root,
+        tmux_session_root,
+        venv_activate_path,
+        template_path,
+        output_path,
+        project_name,
+        logging_level,
+    )

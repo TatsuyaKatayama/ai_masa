@@ -1,6 +1,8 @@
 import sys
 import uuid
 import threading
+import argparse
+from typing import Optional, List, Dict, Any
 from .base_agent import BaseAgent
 from ..models.message import Message
 
@@ -9,43 +11,54 @@ class UserInputAgent(BaseAgent):
     ユーザーからのコンソール入力を受け付け、他のエージェントにメッセージを送信するエージェント。
     LLMは使用しない。
     """
-    def __init__(self, name="UserInputAgent", redis_host='localhost', default_target_agent="GeminiCliAgent"):
+    def __init__(self, name: str = "UserInputAgent", description: str = "Handles user input from the console.",
+                 user_lang: str = 'Japanese', memory_id: str = "user_input_memory",
+                 redis_host: str = 'localhost', redis_port: int = 6379, redis_db: int = 0,
+                 default_target_agent: Optional[str] = None, **kwargs):
+        
         # LLM関連のコマンドは不要なため、親クラスの初期化時にダミー値を渡す
         super().__init__(
             name=name,
-            description="Handles user input from the console.",
+            description=description,
+            user_lang=user_lang,
+            memory_id=memory_id,
             redis_host=redis_host,
-            llm_command="",
-            llm_session_create_command="",
-            start_heartbeat=False
+            redis_port=redis_port,
+            redis_db=redis_db,
+            llm_command="echo '{\"to_agent\": \"dummy\", \"content\": \"dummy response\"}'", # ダミーコマンド
+            llm_session_create_command="echo 'new_session_id'", # ダミーコマンド
+            start_heartbeat=False, # UserInputAgentはハートビート不要
+            **kwargs
         )
         self.default_target_agent = default_target_agent
         self.shutdown_event = threading.Event()
         self.response_received_event = threading.Event()
         self.response_received_event.set()  # 最初は入力可能にする
-        print(f"[{self.name}] Initialized. I will send messages to '{self.default_target_agent}'.")
+        if self.default_target_agent:
+            print(f"[{self.name}] Initialized. I will send messages to '{self.default_target_agent}'.")
+        else:
+            print(f"[{self.name}] Initialized. No default target agent set.")
 
-    def think_and_respond(self, trigger_msg, job_id, is_observer=False):
+    def think_and_respond(self, trigger_msg: Message, job_id: str, is_observer: bool = False):
         # このエージェントはLLMによる思考を行わない
         pass
 
-    def _on_message_received(self, message_json):
-        # 自分宛のメッセージやCCはコンソールに表示するだけ
+    def _on_message_received(self, message_json: str):
+        """
+        Decodes the message, passes it to BaseAgent for history saving,
+        and handles user input blocking/unblocking.
+        """
         try:
             msg = Message.from_json(message_json)
-            if msg.from_agent == self.name:
-                return # 自分が送信したメッセージは無視
-
-            job_id = msg.job_id or "default"
+            # BaseAgentの履歴保存ロジックを利用
+            super()._on_message_received(message_json)
             
-            is_to_me = msg.to_agent == self.name
-            if is_to_me:
-                # 自分宛のメッセージが来たら、表示して入力ブロックを解除
-                print(f"\n[{self.name}][{job_id}] 📨 Received from {msg.from_agent}: {msg.content}")
-                self.response_received_event.set()
+            # ユーザーへの表示
+            if msg.to_agent == self.name:
+                print(f"📨 Received from {msg.from_agent}: {msg.content}")
+                self.response_received_event.set() # 応答があったことを通知
             elif self.name in msg.cc_agents:
-                 # CCの場合は表示するだけ
-                 print(f"\n[{self.name}][{job_id}] 👀 (CC) Saw message from {msg.from_agent} to {msg.to_agent}: {msg.content}")
+                print(f"👀 (CC) Saw message from {msg.from_agent} to {msg.to_agent}: {msg.content}")
 
         except Exception as e:
             print(f"[{self.name}] Error in _on_message_received: {e}")
@@ -60,10 +73,7 @@ class UserInputAgent(BaseAgent):
 
         self._input_loop()
         
-        # 終了処理
-        self.shutdown_event.set()
-        self.broker.disconnect()
-        print(f"[{self.name}] Shutting down.")
+        # 終了処理はfinallyブロックで一元的に行う
 
     def _input_loop(self):
         """
@@ -94,6 +104,11 @@ class UserInputAgent(BaseAgent):
                     print(f"\nA new job has started. Job ID: {job_id}")
                     continue
 
+                if not self.default_target_agent:
+                    print(f"[{self.name}] Error: No default target agent set. Cannot send message.", file=sys.stderr)
+                    self.response_received_event.set() # Re-enable input
+                    continue
+
                 # メッセージを送信する直前に入力をブロック
                 self.response_received_event.clear()
                 self.broadcast(
@@ -117,12 +132,40 @@ class UserInputAgent(BaseAgent):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(f"Usage: python -m ai_masa.agents.user_input_agent <AgentName> [DefaultTargetAgent]")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Launch a UserInputAgent.")
+    parser.add_argument("name", type=str, help="The name of the agent.")
+    parser.add_argument("description", type=str, nargs='?', default="Handles user input from the console.", help="Description of the agent.")
+    parser.add_argument("--user_lang", type=str, default="Japanese", help="Language for user interaction.")
+    parser.add_argument("--memory_id", type=str, required=True, help="Memory ID for the agent's history.")
+    parser.add_argument("--redis_host", type=str, default="localhost", help="Redis host.")
+    parser.add_argument("--redis_port", type=int, default=6379, help="Redis port.")
+    parser.add_argument("--redis_db", type=int, default=0, help="Redis DB.")
+    parser.add_argument("--default_target_agent", type=str, help="The default agent to send messages to.")
+    parser.add_argument("--working_dir", type=str, default=None, help="Working directory for the agent.")
+    parser.add_argument("--logging_level", type=str, default="INFO", help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
+
+    args = parser.parse_args()
+
+    # Configure logging
+    import logging
+    log_level = getattr(logging, args.logging_level.upper(), logging.INFO)
+    logging.basicConfig(level=log_level, stream=sys.stdout, format='[%(name)s][%(levelname)s] %(message)s')
 
     agent = UserInputAgent(
-        name=sys.argv[1],
-        default_target_agent=sys.argv[2] if len(sys.argv) > 2 else 'GeminiCliAgent'
+        name=args.name,
+        description=args.description,
+        user_lang=args.user_lang,
+        memory_id=args.memory_id,
+        redis_host=args.redis_host,
+        redis_port=args.redis_port,
+        redis_db=args.redis_db,
+        default_target_agent=args.default_target_agent,
+        working_dir=args.working_dir
     )
-    agent.start_interaction()
+    try:
+        agent.start_interaction()
+    except KeyboardInterrupt:
+        print(f"[{agent.name}] Shutting down.")
+    finally:
+        agent.shutdown()
+        agent.broker.disconnect()

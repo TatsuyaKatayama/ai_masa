@@ -13,7 +13,18 @@ class Message:
         self.job_id = job_id
 
     def to_json(self):
-        return json.dumps(self.__dict__, ensure_ascii=False)
+        return json.dumps(self.to_dict(), ensure_ascii=False)
+
+    def to_dict(self):
+        return {
+            "message_id": self.message_id,
+            "timestamp": self.timestamp,
+            "from_agent": self.from_agent,
+            "to_agent": self.to_agent,
+            "cc_agents": self.cc_agents,
+            "content": self.content,
+            "job_id": self.job_id
+        }
 
     @staticmethod
     def from_json(json_str):

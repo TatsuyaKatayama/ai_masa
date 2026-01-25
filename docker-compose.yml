@@ -1,8 +1,16 @@
 version: "3.9"
 services:
   ai-masa-redis:
-    image: redis:latest
+    image: redis/redis-stack:latest
     container_name: ai-masa-redis
     ports:
       - "6379:6379"
+    volumes:
+      - ./redis-data:/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-h", "localhost", "-p", "6379", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+

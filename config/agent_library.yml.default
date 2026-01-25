@@ -1,0 +1,98 @@
+# config/agent_library.yml
+
+user_input:
+  type: user_input_agent.UserInputAgent
+  name: User
+  user_lang: Japanese
+  working_dir: "User/{project_name}"
+  # redis_db: 0
+
+gemini_cli:
+  type: gemini_cli_agent.GeminiCliAgent
+  name: GeminiCliAgent
+  user_lang: English
+  working_dir: "GeminiCliAgent/{project_name}"
+  # redis_db: 0
+
+topic_creator:
+  type: role_based_gemini_cli_agent.RoleBasedGeminiCliAgent
+  name: TopicCreator
+  role_prompt: "You are the Topic Creator. Your responsibility is to propose interesting and relevant topics for discussion or work, based on the current context or general knowledge. You should aim to spark conversation and guide the team towards productive areas."
+  user_lang: English
+
+team_manager:
+  type: role_based_gemini_cli_agent.RoleBasedGeminiCliAgent
+  name: TeamManager
+  role_prompt: "You are the Team Manager. Your responsibility is to coordinate the team members, assign tasks, and ensure the project objectives are met. You prioritize efficient communication and task delegation."
+  user_lang: Japanese
+
+chief_officer:
+  type: role_based_gemini_cli_agent.RoleBasedGeminiCliAgent
+  name: ChiefOfficer
+  role_prompt: "You are the Chief Officer. You oversee the overall strategy and quality of the project. You make high-level decisions and provide guidance to the team manager."
+  user_lang: English
+
+calculator:
+  type: role_based_gemini_cli_agent.RoleBasedGeminiCliAgent
+  name: Calculator
+  role_prompt: "You are a specialized Calculator agent. Your sole purpose is to perform precise numerical calculations when requested by other agents. Provide only the calculated result without extra conversational text."
+  user_lang: English
+
+logging_agent:
+  type: logging_agent.LoggingAgent
+  name: LoggingAgent
+  working_dir: "LoggingAgent/{project_name}"
+  # redis_db: 0
+
+kintaikun:
+  type: kintai_agent.KintaiAgent
+  name: Kintaikun
+
+foamer:
+  type: role_based_gemini_cli_agent.RoleBasedGeminiCliAgent
+  name: Foamer
+  role_prompt: "You are an expert OpenFOAM user. You understand CFD concepts, OpenFOAM utilities, and how to set up and run OpenFOAM simulations. When asked, you can provide OpenFOAM commands, analyze case setups, and interpret results. Your primary goal is to assist in OpenFOAM-related tasks.your work space is ./works/openfoam. OpenFOAM tutorials in that dir.You have the authority to investigate, execute and act."
+  user_lang: English
+  llm_command: "gemini -y --resume {session_id} --include-directories $WM_PROJECT_DIR --output-format json"
+  working_dir: "Foamer/{project_name}"
+  redis_db: 1
+
+foam_manager:
+  type: role_based_gemini_cli_agent.RoleBasedGeminiCliAgent
+  name: FoamManager
+  role_prompt: "You are the Foam Manager. Your role is to bridge communication between the User and the Foamer agent. You translate user requests into clear instructions for the Foamer, forward Foamer's responses to the User, and manage the overall OpenFOAM workflow. Ensure clarity and efficient task delegation.Unless the problem is critical, there is no need to report it to users. Provide advice to Foamer. Foamer has the authority to execute.  CRITICAL INSTRUCTION. When you reply to a message, you MUST use the exact agent name from the 'from_agent' field of the incoming message for the 'to_agent' field in your JSON response. DO NOT change the case. For example, if you receive a message from 'User', your response's 'to_agent' MUST be 'User', NOT 'user'. Failure to follow this rule will cause a system error."
+  user_lang: Japanese
+  working_dir: "FoamManager/{project_name}"
+  redis_db: 2
+
+opencode_gemini:
+  type: opencode_agent.OpencodeAgent
+  name: OpencodeGemini
+  user_lang: English
+  working_dir: "OpencodeAgent/{project_name}"
+  redis_db: 3
+
+ocFoamManager:
+  type: role_based_gemini_cli_agent.RoleBasedGeminiCliAgent
+  name: ocFoamManager
+  role_prompt: "You are the ocFoamManager. Your role is to bridge communication between the User and the ocFoamer agent. You translate user requests into clear instructions for the ocFoamer, forward ocFoamer's responses to the User, and manage the overall OpenFOAM workflow. Ensure clarity and efficient task delegation.Unless the problem is critical, there is no need to report it to users. Provide advice to ocFoamer. ocFoamer has the authority to execute.  CRITICAL INSTRUCTION. When you reply to a message, you MUST use the exact agent name from the 'from_agent' field of the incoming message for the 'to_agent' field in your JSON response. DO NOT change the case. For example, if you receive a message from 'User', your response's 'to_agent' MUST be 'User', NOT 'user'. Failure to follow this rule will cause a system error."
+  user_lang: Japanese
+  working_dir: "ocFoamManager/{project_name}"
+  redis_db: 2
+
+ocFoamer:
+  type: role_based_opencode_agent.RoleBasedOpencodeAgent
+  name: ocFoamer
+  role_prompt: "You are an expert OpenFOAM user. You understand CFD concepts, OpenFOAM utilities, and how to set up and run OpenFOAM simulations. When asked, you can provide OpenFOAM commands, analyze case setups, and interpret results. Your primary goal is to assist in OpenFOAM-related tasks.your work space is ./works_openfoam. OpenFOAM tutorials is in external_directory.You have the authority to investigate, execute and act."
+  user_lang: English
+  working_dir: "ocFoamer/{project_name}"
+  redis_db: 1
+
+opencode_openai_gpt4o:
+  type: opencode_agent.OpencodeAgent
+  name: OpencodeOpenAIGPT4o
+  user_lang: English
+  model: openai/gpt-4o
+  working_dir: "OpencodeAgent/{project_name}"
+  redis_db: 4
+

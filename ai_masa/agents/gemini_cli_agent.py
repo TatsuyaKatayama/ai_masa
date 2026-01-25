@@ -1,82 +1,178 @@
 import sys
 import subprocess
 import shlex
+import os
+import argparse
+import logging
+from typing import Optional
 from .base_agent import BaseAgent
+
+logger = logging.getLogger(__name__)
 
 class GeminiCliAgent(BaseAgent):
     """
     外部のGemini CLIコマンドをLLMとして利用するエージェント。
     """
-    def __init__(self, name="GeminiCliAgent", redis_host='localhost', user_lang='Japanese'):
-        # BaseAgentのinvoke_llmで{session_id}が置換される
-        llm_command = "gemini --resume {session_id} --output-format json"
-        # _create_llm_sessionをオーバーライドするため、親クラスのsession_create_commandは使わない
-        llm_session_create_command = ""
+    def __init__(self, name: str = "GeminiCliAgent", description: Optional[str] = None,
+                 user_lang: str = 'Japanese', memory_id: str = "gemini_cli_session",
+                 redis_host: str = 'localhost', redis_port: int = 6379, redis_db: int = 0,
+                 llm_command: Optional[str] = None,
+                 llm_session_create_command: Optional[str] = None,
+                 working_dir: Optional[str] = None, **kwargs):
+        
+        final_description = description if description is not None else \
+            "You are an intelligent AI assistant equipped with the Gemini CLI. Your task is to understand user messages and generate concise and accurate responses using the Gemini CLI tool."
+
+        final_llm_command = llm_command
+        if final_llm_command is None:
+            final_llm_command = "gemini --resume {session_id} --output-format json"
+
+        final_llm_session_create_command = llm_session_create_command or "echo 'new_session_id'"
 
         super().__init__(
             name=name,
-            description="You are an intelligent AI assistant equipped with the Gemini CLI. Your task is to understand user messages and generate concise and accurate responses using the Gemini CLI tool.",
+            description=final_description,
             user_lang=user_lang,
+            memory_id=memory_id,
             redis_host=redis_host,
-            llm_command=llm_command,
-            llm_session_create_command=llm_session_create_command
+            redis_port=redis_port,
+            redis_db=redis_db,
+            llm_command=final_llm_command,
+            llm_session_create_command=final_llm_session_create_command,
+            working_dir=working_dir,
+            **kwargs
         )
 
-    def _create_llm_session(self, job_id):
+        self.parsed_llm_args = []
+        expanded_llm_command = os.path.expandvars(self.llm_command)
+        llm_command_parts = shlex.split(expanded_llm_command)
+        i = 0
+        while i < len(llm_command_parts):
+            part = llm_command_parts[i]
+            if part in ('-y', '--yolo', '--include-directories', '-I'):
+                self.parsed_llm_args.append(part)
+                if part in ('--include-directories', '-I') and i + 1 < len(llm_command_parts) and not llm_command_parts[i+1].startswith('-'):
+                    self.parsed_llm_args.append(llm_command_parts[i+1])
+                    i += 1
+            i += 1
+        
+        if self.working_dir:
+            gemini_dir = os.path.join(self.working_dir, '.gemini')
+            settings_path = os.path.join(gemini_dir, 'settings.json')
+            os.makedirs(gemini_dir, exist_ok=True)
+            if not os.path.exists(settings_path):
+                with open(settings_path, 'w') as f:
+                    f.write('{}')
+                logger.info(f"[{self.name}] Created {settings_path}")
+
+    def _create_llm_session(self, job_id: str) -> Optional[str]:
         """
-        新しいGemini CLIセッションを作成し、そのセッションインデックスを返す。
+        Creates a new Gemini CLI session by running a one-shot command and returns the next available session index.
+        It checks both stdout and stderr for the session list, as gemini CLI's output stream may vary.
         """
+        logger.debug(f"[{self.name}][{job_id}] Starting _create_llm_session.")
+        import re
         session_index = 0
         try:
-            # 既存のセッション数を数える
             result = subprocess.run(
                 "gemini --list-sessions",
-                shell=True, capture_output=True, text=True, check=False
+                shell=True, capture_output=True, text=True, check=False,
+                cwd=self.working_dir
             )
-            stdout = result.stdout.strip()
-            # "No sessions found." が返ってくる場合も考慮
-            if stdout and "No sessions found" not in stdout:
-                session_index = len(stdout.split('\n')) + 1 # 1-based index
-            else:
-                session_index = 1 # 最初のセッションはインデックス1から始まる
-        except FileNotFoundError:
-            print(f"[{self.name}][{job_id}] Error: 'gemini' command not found.")
-            return None
-        except Exception as e:
-            print(f"[{self.name}][{job_id}] Error counting sessions: {e}. Assuming 1 as starting index.")
-            session_index = 1
+            # The command might not raise an error even if it fails, so we check stderr.
+            # The output might be in stdout or stderr.
+            output = result.stdout.strip() or result.stderr.strip()
+            logger.debug(f"[{self.name}][{job_id}] 'gemini --list-sessions' output:\n{output}")
 
-        # 新しいセッションを開始するために、role_promptを使って簡単なコマンドを実行する
+            if "No previous sessions found for this project." in output or "No sessions found." in output:
+                session_index = 1
+            else:
+                # Try to find "Available sessions for this project (X):"
+                match = re.search(r"Available sessions for this project \((\d+)\):", output)
+                if match:
+                    session_count = int(match.group(1))
+                    session_index = session_count + 1
+                else:
+                    # Fallback to counting lines if the header is not found
+                    session_lines = [line for line in output.split('\n') if line.strip() and line.strip()[0].isdigit() and '.' in line]
+                    if session_lines:
+                        session_index = len(session_lines) + 1
+                    else:
+                        # If we have output but can't parse it, it's safer to abort.
+                        logger.critical(f"[{self.name}][{job_id}] Could not determine session count from gemini output.")
+                        logger.critical(f"[{self.name}][{job_id}] Output was: {output}")
+                        return None
+            
+            if session_index == 0: # Should not happen if logic is correct
+                logger.critical(f"[{self.name}][{job_id}] Calculated session_index is 0. Aborting.")
+                return None
+
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            logger.critical(f"[{self.name}][{job_id}] Failed to execute 'gemini --list-sessions': {e}")
+            return None
+
         try:
-            # self.role_prompt を初回プロンプトとして渡し、セッションを初期化
-            # 新しいセッションインデックスを使って初期化
-            init_command = f"gemini --resume {session_index} {shlex.quote(self.role_prompt)}"
+            init_command = f"gemini {' '.join(self.parsed_llm_args)} {shlex.quote(self.role_prompt)}"
+            logger.debug(f"[{self.name}][{job_id}] Running session init command: {init_command}")
             subprocess.run(
                 init_command, shell=True, check=True,
-                capture_output=True, text=True, timeout=60
+                capture_output=True, text=True, timeout=80,
+                cwd=self.working_dir
             )
         except subprocess.CalledProcessError as e:
-             # A one-shot command might return non-zero if it doesn't produce a "final answer"
-             # in the expected format, but it still creates the session. So we log and continue.
-            print(f"[{self.name}][{job_id}] Info: Initial gemini command finished with code {e.returncode}. This might be expected for a one-shot prompt that is just a role description. Stderr: {e.stderr}")
-        except subprocess.TimeoutExpired:
-            print(f"[{self.name}][{job_id}] Warning: Initial gemini command timed out. A session may not have been created.")
+            logger.info(f"[{self.name}][{job_id}] Initial gemini command for session creation finished with code {e.returncode}. This is often expected.")
+        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+            logger.error(f"[{self.name}][{job_id}] Error during Gemini session initialization: {e}")
             return None
-        except FileNotFoundError:
-            print(f"[{self.name}][{job_id}] Error: 'gemini' command not found.")
-            return None
-
-        print(f"[{self.name}][{job_id}] New session will use index: {session_index}")
+        
+        logger.info(f"[{self.name}][{job_id}] New session will use index: {session_index}")
+        logger.debug(f"[{self.name}][{job_id}] Finished _create_llm_session.")
         return str(session_index)
 
 
+
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(f"Usage: python -m ai_masa.agents.gemini_cli_agent <AgentName> [user_lang]")
-        sys.exit(1)
+    # Configure basic logging for console output
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='[%(levelname)s] %(message)s')
+    # For more verbose debug logging, uncomment the line below:
+    # logging.getLogger(__name__).setLevel(logging.DEBUG)
+    # Or, to set all loggers to DEBUG:
+    # logging.basicConfig(level=logging.DEBUG, stream=sys.stdout, format='[%(levelname)s] %(message)s')
+
+    parser = argparse.ArgumentParser(description="Launch a GeminiCliAgent.")
+    parser.add_argument("name", type=str, help="The name of the agent.")
+    parser.add_argument("description", type=str, nargs='?', default=None, help="The description of the agent.")
+    parser.add_argument("--user_lang", type=str, default="Japanese", help="Language for user interaction.")
+    parser.add_argument("--memory_id", type=str, required=True, help="Session ID for the agent's history.")
+    parser.add_argument("--redis_host", type=str, default="localhost", help="Redis host.")
+    parser.add_argument("--redis_port", type=int, default=6379, help="Redis port.")
+    parser.add_argument("--redis_db", type=int, default=0, help="Redis DB.")
+    parser.add_argument('--llm_command', type=str, default=None, help='The command to execute for the LLM.')
+    parser.add_argument('--llm_session_create_command', type=str, default=None, help='The command to create LLM session.')
+    parser.add_argument('--working_dir', type=str, default=None, help='Working directory for LLM commands.')
+    parser.add_argument("--logging_level", type=str, default="INFO", help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
+
+    args = parser.parse_args()
+
+    # Configure logging
+    log_level = getattr(logging, args.logging_level.upper(), logging.INFO)
+    logging.basicConfig(level=log_level, stream=sys.stdout, format='[%(name)s][%(levelname)s] %(message)s')
 
     agent = GeminiCliAgent(
-        name=sys.argv[1],
-        user_lang=sys.argv[2] if len(sys.argv) > 2 else 'Japanese'
+        name=args.name,
+        description=args.description,
+        user_lang=args.user_lang,
+        memory_id=args.memory_id,
+        redis_host=args.redis_host,
+        redis_port=args.redis_port,
+        redis_db=args.redis_db,
+        llm_command=args.llm_command,
+        llm_session_create_command=args.llm_session_create_command,
+        working_dir=args.working_dir
     )
-    agent.observe_loop()
+    try:
+        agent.observe_loop()
+    except KeyboardInterrupt:
+        logger.info(f"[{agent.name}] Shutting down.")
+    finally:
+        agent.shutdown()
