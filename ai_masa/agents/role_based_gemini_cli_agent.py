@@ -51,6 +51,7 @@ if __name__ == "__main__":
     parser.add_argument("--redis_db", type=int, default=0, help="Redis DB.")
     parser.add_argument("--role_prompt", type=str, help="The role prompt for the agent. Used as description if --description is not set.")
     parser.add_argument('--llm_command', type=str, default=None, help='The command to execute for the LLM.')
+    parser.add_argument('--working_dir', type=str, default=None, help='Working directory for LLM commands.')
     parser.add_argument("--logging_level", type=str, default="INFO", help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
     
     args = parser.parse_args()
@@ -68,7 +69,8 @@ if __name__ == "__main__":
         redis_port=args.redis_port,
         redis_db=args.redis_db,
         role_prompt=args.role_prompt,
-        llm_command=args.llm_command
+        llm_command=args.llm_command,
+        working_dir=args.working_dir
     )
     try:
         agent.observe_loop()

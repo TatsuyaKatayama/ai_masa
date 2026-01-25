@@ -29,7 +29,7 @@ creative_team:
 
 opencode_team_openfoam:
   - user_input
-  - foam_manager
-  - opencode_foamer
+  - ocFoamManager
+  - ocFoamer
   - logging_agent
   - kintaikun
