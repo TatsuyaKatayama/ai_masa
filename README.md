@@ -12,22 +12,22 @@
 
 ```mermaid
 graph TD
-    subgraph User Interaction
+    subgraph "User Interaction"
         UserInput[UserInputAgent]
     end
 
-    subgraph Core Infrastructure
+    subgraph "Core Infrastructure"
         Broker[(Redis Pub/Sub)]
-        Memory[MemoryManager <br> (RedisJSON)]
+        Memory["MemoryManager <br> (RedisJSON)"]
     end
 
-    subgraph Agent Layer
-        Agent1[Thinking Agent A <br> e.g., GeminiCliAgent]
-        Agent2[Thinking Agent B <br> e.g., RoleBasedOpencodeAgent]
-        AgentN[... and so on]
+    subgraph "Agent Layer"
+        Agent1["Thinking Agent A <br> e.g., GeminiCliAgent"]
+        Agent2["Thinking Agent B <br> e.g., RoleBasedOpencodeAgent"]
+        AgentN["... and so on"]
     end
-    
-    subgraph System Agents
+
+    subgraph "System Agents"
         Logger[LoggingAgent]
         Manager[AgentManager]
     end
@@ -38,7 +38,7 @@ graph TD
     Broker -- "Subscribe" --> AgentN
     Broker -- "Subscribe" --> Logger
     Broker -- "Subscribe" --> Manager
-    
+
     Agent1 -- "Publish" --> Broker
     Agent2 -- "Publish" --> Broker
 
