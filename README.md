@@ -2,9 +2,13 @@
 
 ## 🌟 プロジェクト概要
 
-`ai-masa` は、複数のLLMエージェントが協調してタスクを遂行する、分散型のマルチエージェントシステムです。通信基盤に **Redis Pub/Sub** を採用しており、各エージェントは独立したプロセスとして動作します。ユーザーからの指示は `UserInputAgent` を通じて入力され、`GeminiCliAgent` が思考と応答を担い、`LoggingAgent` が全ての通信を記録します。
+`ai-masa` は、複数のLLMエージェントが協調してタスクを遂行する、分散型のマルチエージェントシステムです。通信基盤に **Redis Pub/Sub** を採用し、各エージェントは独立したプロセスとして動作します。エージェント間の対話履歴や個々のエージェントの状態は **Redis (RedisJSON)** 上の **MemoryManager** によって一元管理され、永続化されます。
+
+ユーザーからの指示は `UserInputAgent` を通じて入力され、目的に応じて設定された多様な思考エージェント（`GeminiCliAgent`, `OpencodeAgent`, `RoleBasedAgent`など）が応答を担います。`LoggingAgent` が全ての通信を記録し、後から対話内容を確認・分析することが可能です。
 
 ## ⚙️ システムアーキテクチャ
+
+`ai-masa`は、Pub/Subモデルに基づいた柔軟なマルチエージェントアーキテクチャを採用しています。中心的なメッセージブローカー（Redis）を介して、各エージェントが他のエージェントと非同期に通信します。
 
 ```mermaid
 graph TD
@@ -12,20 +16,43 @@ graph TD
         UserInput[UserInputAgent]
     end
 
-    subgraph Core System
+    subgraph Core Infrastructure
         Broker[(Redis Pub/Sub)]
+        Memory[MemoryManager <br> (RedisJSON)]
     end
 
-    subgraph Agents
-        Gemini[GeminiCliAgent]
+    subgraph Agent Layer
+        Agent1[Thinking Agent A <br> e.g., GeminiCliAgent]
+        Agent2[Thinking Agent B <br> e.g., RoleBasedOpencodeAgent]
+        AgentN[... and so on]
+    end
+    
+    subgraph System Agents
         Logger[LoggingAgent]
+        Manager[AgentManager]
     end
 
     UserInput -- "Publish" --> Broker
-    Broker -- "Subscribe" --> Gemini
+    Broker -- "Subscribe" --> Agent1
+    Broker -- "Subscribe" --> Agent2
+    Broker -- "Subscribe" --> AgentN
     Broker -- "Subscribe" --> Logger
-    Gemini -- "Publish" --> Broker
+    Broker -- "Subscribe" --> Manager
+    
+    Agent1 -- "Publish" --> Broker
+    Agent2 -- "Publish" --> Broker
+
+    Agent1 -- "Read/Write" --> Memory
+    Agent2 -- "Read/Write" --> Memory
+    UserInput -- "Read/Write" --> Memory
 ```
+
+- **UserInputAgent**: ユーザーからのテキスト入力を受け取り、指定されたターゲットエージェントにメッセージを送信します。
+- **Thinking Agents**: それぞれが特定の役割や能力を持つエージェント群です。LLM（Gemini, OpenAIなど）と対話し、思考や応答生成を行います。
+- **LoggingAgent**: システム内を流れる全てのメッセージを購読し、ファイルに記録します。
+- **AgentManager**: 各エージェントの稼働状況を監視します。
+- **Redis Pub/Sub**: エージェント間のメッセージングを担うブローカーです。
+- **MemoryManager**: RedisJSONを利用して、各対話の履歴（メモリ）やエージェントの状態を永続化・管理します。
 
 ## 📦 セットアップ
 
@@ -36,6 +63,7 @@ graph TD
 - [Ruby](https://www.ruby-lang.org/en/)
 - [tmux](https://github.com/tmux/tmux/wiki)
 - [tmuxinator](https://github.com/tmuxinator/tmuxinator) (`gem install tmuxinator`)
+- [opencode-cli](https://github.com/opencode-ai/opencode-cli) (OpencodeAgentを利用する場合)
 
 ### 2. 環境構築
 
@@ -58,13 +86,6 @@ graph TD
     source .venv/bin/activate
     pip install -e .
     ```
-
-4.  **プロジェクトルートの環境変数設定**
-    `ai-masa`プロジェクトのルートディレクトリを指す環境変数 `AI_MASA_ROOT` を設定します。これにより、どのディレクトリからでもスクリプトを実行できるようになります。
-    ```bash
-    export AI_MASA_ROOT="$(pwd)"
-    ```
-    このコマンドを `~/.bashrc` や `~/.zshrc` などに追加すると、シェルを起動するたびに自動で設定されます。
     
 
 ### 3. ユーザー設定の作成
@@ -95,7 +116,7 @@ cp config/orchestration.yml.default config/orchestration.yml
     設定を適用するには、`source ~/.bashrc` または `source ~/.zshrc` を実行するか、新しいターミナルセッションを開始してください。
 
 2.  **エージェントチームの起動**
-    `orchestrate.sh` スクリプトは、`tmuxinator` を使って設定に基づいた `tmux` セッション内で全てのエージェントを自動的に開始します。`AI_MASA_ROOT` 環境変数を設定し、エイリアスを定義した後、以下のコマンドでチームを起動できます。
+    `orchestrate.sh` スクリプトは、`tmuxinator` を使って設定に基づいた `tmux` セッション内で全てのエージェントを自動的に開始します。プロジェクトのルートディレクトリで、エイリアスを定義した後、以下のコマンドでチームを起動できます。
 
     ```bash
     # config/orchestration.yml の 'default' 設定で起動
@@ -119,7 +140,8 @@ python -m unittest discover tests
 
 | ファイル/ディレクトリ | 役割 |
 | :--- | :--- |
-| `ai_masa/agents/` | 各エージェント（`UserInputAgent`, `GeminiCliAgent`等）の実装。 |
+| `ai_masa/agents/` | 各エージェント（`UserInputAgent`, `GeminiCliAgent`, `OpencodeAgent`, `RoleBasedAgent`等）の実装。 |
+| `ai_masa/comms/memory_manager.py` | RedisJSONを利用してエージェントの対話履歴（メモリ）と状態を管理する。 |
 | `config/` | エージェント、チーム、オーケストレーションの設定ファイル群。 |
 | `*.yml.default` | Gitで管理されるデフォルトの設定ファイル。 |
 | `*.yml` | ユーザーがカスタマイズするためのローカル設定ファイル (Git追跡対象外)。 |
@@ -139,7 +161,7 @@ python -m unittest discover tests
 
 #### 2. 機能概要
 
-指定された `.jsonl` 形式のログファイル（`LoggingAgent`が出力したもの）を読み込み、登場するエージェントを自動で特定します。各エージェントには、視覚的に区別しやすい背景色と、頭文字から生成されたSVGアイコンが割り当てられます。これらの情報に基づいて、CSSとSVGアイコンが内部に埋め込まれた自己完結型の `conversation.html` ファイルを生成します。
+指定された `.jsonl` 形式のログファイル（`LoggingAgent`が出力したもの）を読み込み、登場するエージェントを自動で特定します。各エージェントには、視覚的に区別しやすい背景色と、頭文字から生成されたSVGアイコンが割り当てられます。これらの情報に基づいて、HTML、CSS、SVGファイルを生成します。
 
 #### 3. 使い方
 
