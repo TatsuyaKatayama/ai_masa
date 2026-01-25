@@ -81,7 +81,7 @@ class TestGenerateTmuxConfig(unittest.TestCase):
         generate_config(
             team_name='test_team',
             ai_masa_project_root=self.project_root,
-            tmuxinator_memory_root=self.project_root,
+            tmux_session_root=os.path.join(self.project_root, 'works'),
             venv_activate_path=self.venv_path,
             template_path=self.template_path,
             output_path=self.output_path,
@@ -106,7 +106,7 @@ class TestGenerateTmuxConfig(unittest.TestCase):
             "UserProxy",
             f"--memory_id", "UserProxy:test_project",
             f"--redis_db", "0",
-            f"--working_dir", "works/UserProxy/test_project",
+            f"--working_dir", "UserProxy/test_project",
             f"--default_target_agent", "Coder",
             f"--logging_level", "INFO"
         ])
