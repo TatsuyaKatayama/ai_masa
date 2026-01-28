@@ -121,7 +121,7 @@ def main():
     # ログファイルの出力ディレクトリへのコピー
     log_filename = os.path.basename(args.log_file)
     destination_log_path = os.path.join(args.output_dir, log_filename)
-    shutil.copy(args.log_file, destination_log_path)
+    shutil.copyfile(args.log_file, destination_log_path)
     print(f"Log file copied to: {destination_log_path}")
 
     # ログの読み込み
