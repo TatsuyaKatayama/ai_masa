@@ -32,6 +32,23 @@ orchestrate_agents() {
         echo "Warning: Docker command not found. Assuming Redis is running or not needed."
     fi
 
+    # Load environment variables from .env
+    if [ -f ".env" ]; then
+        set -a # Automatically export all variables
+        source .env
+        set +a # Stop automatically exporting variables
+        echo "✅ Loaded environment variables from .env"
+    else
+        echo "Warning: .env file not found. Ensure environment variables are set externally."
+    fi
+
+    # Check and create SHARED_DIR
+    if [ -z "$SHARED_DIR" ]; then
+        fail "SHARED_DIR environment variable is not set in .env or environment."
+    fi
+    mkdir -p "$SHARED_DIR"
+    echo "✅ Shared directory ensured at: $SHARED_DIR"
+
     if ! command_exists tmuxinator;
      then
         fail "tmuxinator is not installed. Please run 'gem install tmuxinator'."

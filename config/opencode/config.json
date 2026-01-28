@@ -13,7 +13,8 @@
     "grep": "allow",
     "external_directory": {
       "*": "deny",
-      "/usr/lib/openfoam/openfoam2312/tutorials/**": "allow"
+      "/usr/lib/openfoam/openfoam2312/tutorials/**": "allow",
+      "${$SHARED_DIR}/**": "allow"
     }
   }
 }
