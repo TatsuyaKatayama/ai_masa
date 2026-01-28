@@ -142,6 +142,12 @@ def build_panes(team_name, ai_masa_project_root, tmux_session_root, venv_activat
             optional_args.append(f"--role_prompt {shlex.quote(role_prompt)}")
         if llm_command:
             optional_args.append(f"--llm_command {shlex.quote(llm_command)}")
+        
+        # Add model for opencode_agent
+        if "opencode_agent" in agent_module_path:
+            model = agent_config.get("model")
+            if model:
+                optional_args.append(f"--model {shlex.quote(model)}")
 
         # Combine all parts in the correct order
         command = " ".join([base_command] + positional_args + optional_args)

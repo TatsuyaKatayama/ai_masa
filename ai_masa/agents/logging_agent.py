@@ -25,6 +25,7 @@ class LoggingAgent(ListenerAgent):
         self.log_dir = f"{self.working_dir}/logs"
         import os
         os.makedirs(self.log_dir, exist_ok=True)
+        self.log_files = {}
 
     def _on_message_received(self, message_json: str):
         """
@@ -59,8 +60,11 @@ class LoggingAgent(ListenerAgent):
            (msg.cc_agents and "_broadcast_" in msg.cc_agents) or \
            (msg.content == "heartbeat" and (msg.job_id == "_system_" or "_broadcast_" in (msg.cc_agents or []))):
             return
-            
-        log_file_path = f"{self.log_dir}/{msg.job_id}.jsonl"
+
+        if msg.job_id not in self.log_files:
+            self.log_files[msg.job_id] = f"{self.log_dir}/{datetime.now().strftime('%Y%m%d_%H%M%S')}_{msg.job_id}.jsonl"
+        
+        log_file_path = self.log_files[msg.job_id]
         with open(log_file_path, "a", encoding="utf-8") as f:
             f.write(msg.to_json() + "\n")
         

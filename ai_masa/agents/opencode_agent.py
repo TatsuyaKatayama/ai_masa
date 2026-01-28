@@ -31,7 +31,7 @@ class OpencodeAgent(BaseAgent):
         # Load .env file at agent initialization
         current_dir = os.path.dirname(os.path.abspath(__file__))
         # Assuming .env is in the 'ai_masa' root, which is two levels up from this file
-        env_file_path = os.path.join(current_dir, '..', '..', '.env.example')
+        env_file_path = os.path.join(current_dir, '..', '..', '.env')
         load_env_file(env_file_path)
 
         final_description = description if description is not None else \
@@ -139,12 +139,15 @@ class OpencodeAgent(BaseAgent):
                     clean_json_str = clean_json_str[json_start:json_end]
             
             response_data = json.loads(clean_json_str)
-            self.broadcast(
-                target=response_data.get("to_agent"),
-                content=response_data.get("content"),
-                cc=response_data.get("cc_agents"),
-                job_id=job_id
-            )
+
+            # If this agent received a CC message, it should not broadcast a response.
+            if not is_observer:
+                self.broadcast(
+                    target=response_data.get("to_agent"),
+                    content=response_data.get("content"),
+                    cc=response_data.get("cc_agents"),
+                    job_id=job_id
+                )
         except json.JSONDecodeError as e:
             logger.error(f"[{self.name}][{job_id}] Error decoding LLM response: {e}\nReceived: {llm_response_json}")
         except Exception as e:
