@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import hashlib
+import html
 from datetime import datetime
 import base64
 import markdown_it
@@ -112,6 +113,8 @@ def main():
     parser.add_argument("--log_file", required=True, help="Path to the JSONL log file.")
     parser.add_argument("--output_dir", required=True, help="Directory to output the conversation.html file.")
     parser.add_argument("--title", default="Conversation Log", help="Title for the HTML page.")
+    parser.add_argument("--no-markdown", action="store_true", help="Disable Markdown rendering.")
+    parser.add_argument("--no-math", action="store_true", help="Disable KaTeX math rendering.")
     
     args = parser.parse_args()
 
@@ -180,10 +183,14 @@ def main():
         to_agent = log.get("to_agent")
         
         content = log.get("content", "")
-        # ```latex ... ``` を $$...$$ に変換
-        content = content.replace("```latex", "$$").replace("```", "$$")
-
-        content_html = md.render(content)
+        if not args.no_markdown:
+            # ```latex ... ``` を $$...$$ に変換
+            content = content.replace("```latex", "$$").replace("```", "$$")
+            content_html = md.render(content)
+        else:
+            # HTMLエスケープを追加して、安全に表示
+            import html
+            content_html = f"<pre style='white-space: pre-wrap; word-wrap: break-word;'>{html.escape(content)}</pre>"
         
         timestamp_str = datetime.fromisoformat(log.get("timestamp")).strftime('%Y-%m-%d %H:%M:%S') if log.get("timestamp") else ""
 
@@ -209,6 +216,27 @@ def main():
         """
         messages_html.append(message_html)
 
+    # KaTeX関連のヘッダーを条件付きで生成
+    katex_header = ""
+    if not args.no_math:
+        katex_header = """
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+        <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+        <script>
+            document.addEventListener("DOMContentLoaded", function() {
+                renderMathInElement(document.body, {
+                    delimiters: [
+                        {left: "$$", right: "$$", display: true},
+                        {left: "$", right: "$", display: false},
+                        {left: "\\\\(", right: "\\\\)", display: false},
+                        {left: "\\\\[", right: "\\\\]", display: true}}
+                    ]
+                });
+            });
+        </script>
+        """
+
     # 最終HTMLの組み立て
     messages_html_content = "\n".join(messages_html)
     full_html = f"""
@@ -219,21 +247,7 @@ def main():
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>{args.title}</title>
         <link rel="stylesheet" href="style.css">
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
-        <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
-        <script>
-            document.addEventListener("DOMContentLoaded", function() {{
-                renderMathInElement(document.body, {{
-                    delimiters: [
-                        {{left: "$$", right: "$$", display: true}},
-                        {{left: "$", right: "$", display: false}},
-                        {{left: "\\\\(", right: "\\\\)", display: false}},
-                        {{left: "\\\\[", right: "\\\\]", display: true}}
-                    ]
-                }});
-            }});
-        </script>
+        {katex_header}
     </head>
     <body>
         <div class="container">
